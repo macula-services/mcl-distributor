@@ -40,7 +40,13 @@
     %% puzzle_invalid -- forever, silently. No `puzzle_difficulty' here:
     %% macula 12 makes it one constant for the fleet.
     {macula, [
-        {crypto_profile, pq_hybrid}
+        {crypto_profile, pq_hybrid},
+        %% THIS NODE names its KEM key: its one capability is
+        %% `confidential => required', which mcl_om refuses to advertise
+        %% while kem_advertise is off. Service-local: the fleet-wide
+        %% switch stays the operator's call, this is only the
+        %% distributor's own posture.
+        {kem_advertise, enabled}
     ]},
     {kernel, [{logger_level, info}]}
 ].

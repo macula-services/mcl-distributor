@@ -1,20 +1,15 @@
-%%%-------------------------------------------------------------------
-%%% @doc OTP application entry point for mcl_distributor.
-%%%
-%%% The supervisor tree is one worker: the group-key distributor for the
-%%% org this service is deployed as. mcl_om's own tree (pool, health
-%%% socket, capability publisher, claim worker) starts first, since
-%%% mcl_distributor lists mcl_om in its applications.
-%%% @end
-%%%-------------------------------------------------------------------
+%% @doc OTP application entry.
+%%
+%% mcl_om:boot/1 wires the mesh, the realm identity and health, then starts
+%% this service and advertises its capabilities only once it is up. The
+%% distributor itself is a child of mcl_distributor_sup, started from
+%% mcl_distributor_service:start/1.
 -module(mcl_distributor_app).
 
 -behaviour(application).
 
 -export([start/2, stop/1]).
 
-start(_StartType, _StartArgs) ->
-    mcl_distributor_sup:start_link().
+start(_Type, _Args) -> mcl_om:boot(mcl_distributor_service).
 
-stop(_State) ->
-    ok.
+stop(_State) -> ok.
