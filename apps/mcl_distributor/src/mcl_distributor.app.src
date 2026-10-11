@@ -1,0 +1,10 @@
+{application, mcl_distributor,
+ [{description, "Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls"},
+  {vsn, "0.1.0"},
+  {registered, [mcl_distributor]},
+  {applications, [kernel, stdlib, mcl_om]},
+  {env, []},
+  {modules, []},
+  {licenses, ["Apache-2.0"]},
+  {links, []}
+ ]}.

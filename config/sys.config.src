@@ -1,0 +1,46 @@
+%% Substituted by relx at boot; every ${VAR} must resolve or the node will not
+%% start with a malformed term. That is the correct failure: a distributor with
+%% a half-configured realm or org advertises a procedure nobody can attribute,
+%% which looks exactly like a healthy node.
+[
+    {mcl_om, [
+        %% Without this, mcl_om_identity:load_node_key/0 returns `undefined'
+        %% forever and identity_key/0 stays {error, no_identity_key} -- a
+        %% service that declares a handler-bearing capability() then silently
+        %% never advertises it, on every republish tick, permanently. Point it
+        %% at the mounted secrets volume.
+        %% ⚠ ON A PERSISTENT VOLUME. This key IS the distributor's identity on
+        %% the mesh: the advertisement is signed with it, and members pin the
+        %% provider by it. A container recreate without the volume mints a new
+        %% one, and the group's members no longer find their distributor.
+        {identity_key_path, "/etc/mcl/secrets/identity.key"},
+        %% /health on a Unix socket only (mcl_om 0.39): no TCP health
+        %% listener, no health port on the host.
+        {health_socket,     "/run/mcl/health.sock"},
+        {capability_topic,  <<"_mesh.cap.">>},
+        %% One org per service: the org whose groups this distributor serves,
+        %% and the namespace the group_keys_v1 procedure advertises under.
+        {org,               <<"${MCL_GROUP_ORG}">>},
+        %% THE REALM IS AN APPLICATION ENV, NOT A SHELL VARIABLE, and this file
+        %% is the only place the two meet.
+        {realm,             <<"${MCL_REALM}">>},
+        %% ⚠ THE TRUST ANCHOR, AND IT IS NOT OPTIONAL. The realm's public
+        %% SIGNING KEY, 64-hex-per-32-bytes, as carried. mcl_om decodes it and
+        %% pins it as macula:connect/2's `realm_trust': without it the boot
+        %% claim never reaches the realm and the org-namespaced advertisement
+        %% never resolves. Public material.
+        {realm_key,         <<"${MCL_REALM_KEY}">>}
+    ]},
+    %% ==========================================================================
+    %% THE PQ CRYPTO PROFILE, WITHOUT WHICH THIS NODE DOES NOT PEER
+    %% ==========================================================================
+    %%
+    %% ⚠ MANDATORY. Without this block the node boots on the classical profile
+    %% while every PQ station closes the CONNECT/HELLO handshake as
+    %% puzzle_invalid -- forever, silently. No `puzzle_difficulty' here:
+    %% macula 12 makes it one constant for the fleet.
+    {macula, [
+        {crypto_profile, pq_hybrid}
+    ]},
+    {kernel, [{logger_level, info}]}
+].

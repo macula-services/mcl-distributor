@@ -1,0 +1,99 @@
+# Build the OCI image for mcl-distributor and push to the registry.
+#
+# TWO CHANNELS, AND NOTHING MOVES :latest.
+#
+#   push of v*   : publishes :<semver>, signed by attest      <- what the dev fleet pins
+#   push to main : publishes :main and :<sha>       <- the tip, for trying; nothing follows it
+#
+# The dev fleet (macula-fleet) runs no tag: its own pin-releases workflow finds a signed
+# v* release, verifies it was signed on that tag (signature, SBOM, provenance) and pins its
+# digest, canary first (macula-fleet#14, #15). So a green v* tag IS the deploy, with no
+# credential here, and a push to main deploys nothing. The semver
+# tags stay published, so a bad release can be pinned back to a known one.
+#
+# NOTE ON PUSHING THIS FILE. An HTTPS push that creates or updates anything under
+# .github/workflows/ needs a token carrying the `workflow' scope, and the error
+# names the FILE rather than the missing scope. Use an SSH remote and the problem
+# does not arise.
+
+name: build-and-push
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+    # A push to main rebuilds :main (a tag push ignores this filter). One that changes no
+    # code must not: a docs-only commit once reset a whole fleet.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'scripts/**'
+  workflow_dispatch:
+
+# ONE IMAGE BUILD IN FLIGHT PER REF. Every push to main builds and pushes
+# :latest; without this, three quick commits run three builds that finish in
+# whatever order the runners please, and :latest ends up being whichever
+# finished LAST, not whichever was pushed last -- watchtower then rolls the
+# fleet onto an older commit and flaps. a sibling service hit exactly that live.
+concurrency:
+  group: build-and-push-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-push:
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set tag
+        id: tag
+        run: |
+          # A v* tag publishes its version here; macula-fleet pins it once attest has signed it
+          # (nothing moves :latest). main publishes :main and :<sha>; no box follows those.
+          img=ghcr.io/macula-services/mcl-distributor
+          case "${GITHUB_REF}" in
+            refs/tags/v*)    echo "tags=$img:${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT" ;;
+            refs/heads/main) echo "tags=$img:main,$img:${GITHUB_SHA}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::only a v* tag publishes a version, only main :main and :<sha>; refusing ${GITHUB_REF}"; exit 1 ;;
+          esac
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          push: true
+          tags: ${{ steps.tag.outputs.tags }}
+          # The commit the image was built from, readable from the image itself.
+          build-args: |
+            REVISION=${{ github.sha }}
+
+  # SIGNED BY DIGEST, SBOM AND PROVENANCE ATTESTED, keyless, so a box can refuse any digest that did
+  # not come from this workflow on a commit of this repository (macula-fleet's reconciler checks it
+  # before it runs the image). Pinned by full commit sha: the signing identity is that file at that
+  # ref. See macula-ci-images' README.
+  attest:
+    needs: build-and-push
+    if: needs.build-and-push.outputs.digest != ''
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: macula-io/macula-ci-images/.github/workflows/attest-image.yml@601c719b7cfbd8ed15852281d87c652d776a6ae7
+    with:
+      image: ghcr.io/macula-services/mcl-distributor
+      digest: ${{ needs.build-and-push.outputs.digest }}

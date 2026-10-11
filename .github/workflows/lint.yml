@@ -1,0 +1,37 @@
+# Structural lint, unit tests and dialyzer, in the same digest-pinned build
+# image the Containerfile's builder uses: OTP 28.4.3, rebar3 and Rust (macula's
+# NIFs always build from source).
+
+name: lint-and-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container:
+      # ⚠ THE SAME DIGEST-PINNED BUILD IMAGE AS THE Containerfile. Its tag names
+      # a date, not a release, so the step below refuses anything but 28.4.3.
+      # The service tests guard this pin and that check.
+      image: ghcr.io/macula-io/macula-ci-otp:20260923-1444@sha256:dd2ba6eb858a0eacedf0179300323fe5c6da46fb308d22da0ca8cfcd1f0718dc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the toolchain is the one we think it is
+        run: |
+          openssl version
+          rebar3 version
+          erl -noshell -eval '
+            Otp = string:trim(element(2, file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])))),
+            Mldsa = lists:member(mldsa87, crypto:supports(public_keys)),
+            io:format("OTP ~s, mldsa87 ~p~n", [Otp, Mldsa]),
+            case {Otp, Mldsa} of
+                {<<"28.4.3">>, true} -> halt(0);
+                _                    -> halt(1)
+            end.'
+      - run: rebar3 lint
+      - run: rebar3 eunit
+      - run: rebar3 dialyzer

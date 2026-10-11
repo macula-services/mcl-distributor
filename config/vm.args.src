@@ -1,0 +1,13 @@
+## Node identity and runtime flags for mcl_distributor.
+-name ${MCL_NODE_NAME}@${MCL_NODE_HOST}
+-setcookie ${MCL_COOKIE}
+
++K true
+
+## Async thread pool: pulls arrive over the pool's sockets.
++A 16
+
+## A distributor under a pull storm must queue, not crash the VM on
+## process limits.
++P 1048576
++Q 1048576
