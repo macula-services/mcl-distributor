@@ -49,7 +49,7 @@ health() ->
 capabilities() ->
     [#{name => <<"group_keys_v1">>,
        version => 1,
-       handler => {mcl_distributor_pull, pull},
+       handler => {mcl_distributor_pull, []},
        auth => {realm_member_required, mcl_distributor:org_key_id(), <<"group_keys">>},
        confidential => required}].
 

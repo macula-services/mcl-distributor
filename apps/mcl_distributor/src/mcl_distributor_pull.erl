@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
-%%% @doc The `<org>/group_keys_v1' handler, in the `{Module, Function}'
-%%% shape mcl_om's capabilities advertise: forwards the pull to the live
-%%% distributor by its registered name.
+%%% @doc The `<org>/group_keys_v1' handler, in macula_response's
+%%% per-request `init/1' + `handle_request/2' contract, forwarding every
+%%% pull to the live distributor by its registered name.
 %%%
 %%% The UCAN policy and the sealed-only channel are enforced by the link
 %%% BEFORE this handler runs (the capability's `auth' and `confidential'
@@ -11,9 +11,16 @@
 %%%-------------------------------------------------------------------
 -module(mcl_distributor_pull).
 
--export([pull/1]).
+-behaviour(macula_response).
 
--spec pull(map()) -> map() | {error, atom()}.
-pull(Payload) ->
+-export([init/1, handle_request/2]).
+
+init(_Args) -> {ok, undefined}.
+
+-spec handle_request(term(), term()) -> {reply, term(), term()} | {error, term(), term()}.
+handle_request(Payload, State) ->
     Handler = macula_group_keys:handler(whereis(mcl_distributor)),
-    Handler(Payload).
+    case Handler(Payload) of
+        {error, Reason} = Refusal when is_atom(Reason) -> {error, Refusal, State};
+        Reply                                          -> {reply, Reply, State}
+    end.

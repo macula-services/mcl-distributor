@@ -1,0 +1,84 @@
+# test_live/*.erl hit a real PQ-fleet station over the network -- genuinely
+# valuable (the port's live smoke caught four real bugs no unit test could).
+#
+# ⚠ MANUAL DISPATCH ONLY, deliberately: the GitHub-hosted runner has no IPv6
+# egress, and the fleet's stations are AAAA-only, so `wait_healthy/2` in
+# every test_live module times out before the QUIC connect can ever reach the
+# station -- a platform limitation, not something this repo's code can route
+# around. On every push/PR this job burned ~18 minutes for a deterministic
+# red, which is why it is not wired into the automatic triggers. Run it:
+#
+#   gh workflow run live-mesh-tests
+#
+# ...or on the self-hosted runner this user's IPv6-capable boxes will get one
+# day (which IS the real fix -- then wire it back into push/PR). The
+# toolchain cache is shared with lint-and-test.yml, so a dispatched run after
+# a recent check run is fast.
+
+name: live-mesh-tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live-mesh-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    env:
+      PQ_OPENSSL: ${{ github.workspace }}/pq/openssl
+      PQ_OTP: ${{ github.workspace }}/pq/otp-28.1
+      LD_LIBRARY_PATH: ${{ github.workspace }}/pq/openssl/lib
+      ERLANG_ROCKSDB_OPTS: -DOPENSSL_ROOT_DIR=${{ github.workspace }}/pq/openssl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the PQ toolchain (OpenSSL 3.6.4 + OTP 28.1)
+        id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: pq
+          key: pq-toolchain-openssl3.6.4-otp28.1
+
+      - name: Build a modern OpenSSL (ML-DSA) for the PQ crypto
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends build-essential perl zlib1g-dev
+          curl -fsSL https://github.com/openssl/openssl/releases/download/openssl-3.6.4/openssl-3.6.4.tar.gz -o /tmp/openssl.tar.gz
+          tar -xzf /tmp/openssl.tar.gz -C /tmp
+          cd /tmp/openssl-3.6.4
+          ./Configure --prefix="$PQ_OPENSSL" -shared > /dev/null
+          make -j4 > /dev/null
+          make install_sw > /dev/null
+
+      - name: Build Erlang/OTP 28.1 from source against the PQ OpenSSL
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends autoconf libncurses-dev m4
+          curl -fsSL https://github.com/erlang/otp/releases/download/OTP-28.1/otp_src_28.1.tar.gz -o /tmp/otp.tar.gz
+          tar -xzf /tmp/otp.tar.gz -C /tmp
+          cd /tmp/otp_src_28.1
+          LDFLAGS="-Wl,-rpath,$PQ_OPENSSL/lib" \
+            ./configure --prefix="$PQ_OTP" --with-ssl="$PQ_OPENSSL" \
+              --without-javac --without-wx --without-odbc > /dev/null
+          make -j4 > /dev/null
+          make install > /dev/null
+
+      - name: Put the PQ OTP on PATH
+        run: echo "$PQ_OTP/bin" >> "$GITHUB_PATH"
+
+      - name: Install rebar3
+        run: |
+          curl -L -o rebar3 https://s3.amazonaws.com/rebar3/rebar3
+          chmod +x rebar3
+          sudo mv rebar3 /usr/local/bin/rebar3
+
+      - name: Install rocksdb build deps
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends cmake libsnappy-dev liblz4-dev libzstd-dev libbz2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - run: rebar3 as live_test eunit --dir test_live

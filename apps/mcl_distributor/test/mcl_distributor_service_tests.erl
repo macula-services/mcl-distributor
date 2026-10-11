@@ -30,7 +30,7 @@ capabilities_are_the_one_group_keys_v1_test() ->
         true = os:putenv("MCL_GROUP_ORG_KEY_ID", ?ORG_KEY_ID_HEX),
         [Cap] = mcl_distributor_service:capabilities(),
         ?assertEqual(<<"group_keys_v1">>, maps:get(name, Cap)),
-        ?assertEqual({mcl_distributor_pull, pull}, maps:get(handler, Cap)),
+        ?assertEqual({mcl_distributor_pull, []}, maps:get(handler, Cap)),
         ?assertEqual(required, maps:get(confidential, Cap)),
         {realm_member_required, OrgKeyId, <<"group_keys">>} = maps:get(auth, Cap),
         ?assertEqual(32, byte_size(OrgKeyId))
@@ -90,7 +90,8 @@ pull_forwards_to_the_registered_distributor_test() ->
         Payload = #{{text, <<"prefix">>} => {text, ?PREFIX},
                     {text, <<"epoch">>} => {text, <<"current">>},
                     caller => crypto:strong_rand_bytes(32)},
-        Reply = mcl_distributor_pull:pull(Payload),
+        {ok, _} = mcl_distributor_pull:init([]),
+        {reply, Reply, _} = mcl_distributor_pull:handle_request(Payload, undefined),
         ?assertMatch(#{prefix := {text, ?PREFIX}, policy := {text, <<"required">>}, epochs := [_]}, Reply)
     after
         unregister(mcl_distributor),
