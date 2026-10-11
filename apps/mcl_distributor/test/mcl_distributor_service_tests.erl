@@ -38,6 +38,20 @@ capabilities_are_the_one_group_keys_v1_test() ->
         restore_env(Env)
     end.
 
+%% The org key id is unknown until the realm mints the org key (it does so
+%% only when it issues the provider grant), so a first boot advertises no
+%% group capability: the claim lands, the operator admits, and a restart
+%% after the env is filled registers it. Advertising it without the key id
+%% would mean an `open' group_keys_v1, which admits any realm member.
+capabilities_are_empty_until_the_org_key_id_is_known_test() ->
+    {ok, Env} = save_env(),
+    try
+        true = os:unsetenv("MCL_GROUP_ORG_KEY_ID"),
+        ?assertEqual([], mcl_distributor_service:capabilities())
+    after
+        restore_env(Env)
+    end.
+
 identity_spec_is_scoped_and_empty_test() ->
     Spec = mcl_distributor_service:identity_spec(),
     ?assertEqual(<<"mcl-distributor">>, maps:get(scope, Spec)),

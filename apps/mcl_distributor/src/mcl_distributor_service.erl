@@ -41,17 +41,27 @@ health() ->
 %% `group_keys_v1'. On the wire it is `Org/group_keys_v1', the org being
 %% deploy config (MCL_GROUP_ORG, the same org mcl_om advertises under).
 %%
+%% The capability is omitted until the org's key id is known: the realm
+%% mints the org key only when it issues the provider grant, so a first
+%% boot advertises everything else, files the claim, and a restart after
+%% MCL_GROUP_ORG_KEY_ID is filled (from the published org_directory)
+%% registers this one.
+%%
 %% `auth' gates the procedure on the org's `group_keys' UCAN, checked by
 %% the link before the handler runs; `confidential => required' makes the
 %% link refuse a clear pull, so a key never travels readable by a
-%% station. `confidential' refuses to boot while kem_advertise is off
-%% (mcl_om's own verdict), which is the flip the fleet must make first.
+%% station.
 capabilities() ->
-    [#{name => <<"group_keys_v1">>,
-       version => 1,
-       handler => {mcl_distributor_pull, []},
-       auth => {realm_member_required, mcl_distributor:org_key_id(), <<"group_keys">>},
-       confidential => required}].
+    case mcl_distributor:org_key_id() of
+        undefined ->
+            [];
+        OrgKeyId ->
+            [#{name => <<"group_keys_v1">>,
+               version => 1,
+               handler => {mcl_distributor_pull, []},
+               auth => {realm_member_required, OrgKeyId, <<"group_keys">>},
+               confidential => required}]
+    end.
 
 %% THE AUTHORITY THIS SERVICE ASKS THE REALM FOR, and deliberately nothing
 %% more. The boot claim covers the org-namespaced procedure above; no

@@ -65,9 +65,21 @@ policy() ->
         Other     -> error({mcl_group_policy, {not_a_policy, Other}})
     end.
 
--spec org_key_id() -> <<_:256>>.
+%% The org's PUBLIC key id, or `undefined' until the realm has minted the
+%% org key and published its org_directory. The realm generates the org key
+%% lazily when it issues the provider grant, so this is UNKNOWN at first
+%% boot: the claim lands first, the operator admits the node, and the key id
+%% comes back from the published org_directory. The capability's
+%% realm_member_required policy needs it, so capabilities() omits
+%% group_keys_v1 while it is unset -- the claim and the other capabilities
+%% still work, and a restart after the env is filled registers the full set.
+-spec org_key_id() -> <<_:256>> | undefined.
 org_key_id() ->
-    decode_hex(required_binary("MCL_GROUP_ORG_KEY_ID")).
+    case os:getenv("MCL_GROUP_ORG_KEY_ID") of
+        false -> undefined;
+        ""    -> undefined;
+        Hex   -> decode_hex(list_to_binary(Hex))
+    end.
 
 rotate_after_ms() ->
     case os:getenv("MCL_GROUP_ROTATE_MS") of
