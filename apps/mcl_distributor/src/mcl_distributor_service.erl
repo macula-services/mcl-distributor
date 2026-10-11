@@ -16,7 +16,7 @@
 
 info() ->
     #{name => <<"mcl-distributor">>,
-      version => <<"0.1.0">>,
+      version => <<"0.1.1">>,
       description => <<"Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls">>}.
 
 %% @doc The distributor starts here, after mcl_om's pool: its default

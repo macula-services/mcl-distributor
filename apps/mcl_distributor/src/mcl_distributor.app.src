@@ -1,6 +1,6 @@
 {application, mcl_distributor,
  [{description, "Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls"},
-  {vsn, "0.1.0"},
+  {vsn, "0.1.1"},
   {registered, [mcl_distributor]},
   {mod, {mcl_distributor_app, []}},
   {applications, [kernel, stdlib, mcl_om]},
