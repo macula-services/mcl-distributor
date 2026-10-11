@@ -94,7 +94,8 @@ measure_pinned(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan) -
                             #{group => ?PREFIX, ucan_token => PubUcan}),
         Opened = receive_event(SubRef, Topic),
         emit("~-34s ~-10s ~-10s ~-8s ~s~n",
-                  [Name, pull(PullResult), ok, opened(Opened), "n/a"]),
+                  [Name, pull(PullResult), ok, opened(Opened),
+                   budget_column(Publisher)]),
         ok
     catch
         Class:Reason ->
@@ -103,6 +104,24 @@ measure_pinned(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan) -
     after
         catch macula_client:close(Publisher),
         catch macula_client:close(Subscriber)
+    end.
+
+%% The D28 budget, read node-locally from the station being measured
+%% (`_dht.budget', macula-station#85). Tolerant: a station that does not
+%% serve it yet (pre-0.10.1) reports the refusal in the column instead of
+%% failing the row.
+budget_column(Pool) ->
+    case macula_client:call_linked_station(Pool, <<0:256>>,
+                                           <<"_dht.budget">>, #{}, 10_000) of
+        {ok, Budget} ->
+            io_lib:format("~p/~p/~p/~p/~p",
+                          [field(Budget, <<"entries">>),
+                           field(Budget, <<"builtin_bytes">>),
+                           field(Budget, <<"builtin_capacity">>),
+                           field(Budget, <<"domain_bytes">>),
+                           field(Budget, <<"domain_capacity">>)]);
+        {error, Reason} ->
+            io_lib:format("n/a (~p)", [Reason])
     end.
 
 %%------------------------------------------------------------------
