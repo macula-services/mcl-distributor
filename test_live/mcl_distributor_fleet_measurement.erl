@@ -31,8 +31,6 @@ the_fleet_measurement_test_() ->
 
 run() ->
     {ok, _} = application:ensure_all_started(macula),
-    PubUcan = required_env("MCL_MEASURE_PUB_UCAN"),
-    SubUcan = required_env("MCL_MEASURE_SUB_UCAN"),
     PublisherKp = identity_key(pub),
     SubscriberKp = identity_key(sub),
     {ok, PubNode} = macula_node_keys:node_id(PublisherKp),
@@ -40,16 +38,42 @@ run() ->
     io:format("member node ids (for mint-group-ucan.sh):~n"
               "  publisher:  ~s~n  subscriber: ~s~n",
               [binary:encode_hex(PubNode), binary:encode_hex(SubNode)]),
+    PubUcan = required_env("MCL_MEASURE_PUB_UCAN"),
+    SubUcan = required_env("MCL_MEASURE_SUB_UCAN"),
     RealmPub = realm_pub(),
     Stations = stations(RealmPub),
-    io:format("~-34s ~-10s ~-10s ~-8s ~s~n",
-              ["station", "pull", "publish", "open", "d28_budget"]),
+    {ok, Fd} = file:open("/tmp/opencode/fm-table.txt", [write]),
+    put(fm_table_fd, Fd),
+    emit("~-34s ~-10s ~-10s ~-8s ~s~n",
+         ["station", "pull", "publish", "open", "d28_budget"]),
     Results = [measure(S, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan)
                || S <- Stations],
-    ?assert(lists:all(fun(ok) -> true; (_) -> false end, Results)),
+    Measured = [R || R <- Results, R =/= {error, unusable_directory_row}],
+    file:close(Fd),
+    ?assert(lists:all(fun(ok) -> true; (_) -> false end, Measured)),
     ok.
 
+%% Writes to stdout and to the report file, so a passing run still leaves
+%% its table behind.
+emit(Format, Args) ->
+    io:format(Format, Args),
+    case get(fm_table_fd) of
+        undefined -> ok;
+        Fd        -> io:format(Fd, Format, Args)
+    end.
+
 measure(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan) ->
+    Name = maps:get(hostname, Station),
+    Node = maps:get(node_id, Station),
+    case is_binary(Name) andalso is_binary(Node) andalso byte_size(Node) =:= 32 of
+        false ->
+            emit("~p skipped (directory row carries no usable hostname/node_id)~n", [Name]),
+            {error, unusable_directory_row};
+        true ->
+            measure_pinned(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan)
+    end.
+
+measure_pinned(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan) ->
     Name = maps:get(hostname, Station),
     Node = maps:get(node_id, Station),
     Seed = #{host => Name, port => maps:get(quic_port, Station, 4433),
@@ -59,7 +83,7 @@ measure(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan) ->
     try
         ok = wait_healthy(Publisher, 100),
         ok = wait_healthy(Subscriber, 100),
-        Topic = <<Name/binary, "/fact_v1">>,
+        Topic = <<?PREFIX/binary, "/", Name/binary, "/fact_v1">>,
         Pull = #{{text, <<"prefix">>} => {text, ?PREFIX},
                  {text, <<"epoch">>} => {text, <<"current">>}},
         PullResult = macula:call(Publisher, ?REALM, ?GROUP_PROC, Pull, 10_000,
@@ -69,12 +93,12 @@ measure(Station, PublisherKp, SubscriberKp, RealmPub, PubUcan, SubUcan) ->
         ok = macula:publish(Publisher, ?REALM, Topic, #{fact => {text, ?MARKER}},
                             #{group => ?PREFIX, ucan_token => PubUcan}),
         Opened = receive_event(SubRef, Topic),
-        io:format("~-34s ~-10s ~-10s ~-8s ~s~n",
+        emit("~-34s ~-10s ~-10s ~-8s ~s~n",
                   [Name, pull(PullResult), ok, opened(Opened), "n/a"]),
         ok
     catch
         Class:Reason ->
-            io:format("~-34s ~-10p:~p~n", [Name, Class, Reason]),
+            emit("~-34s ~p:~p~n", [binary_to_list(Name), Class, Reason]),
             {error, Reason}
     after
         catch macula_client:close(Publisher),
@@ -90,8 +114,27 @@ stations(RealmPub) ->
     ok = wait_healthy(Pool, 100),
     {ok, Payload} = macula:call(Pool, ?REALM, <<"mcl-stations/list_stations">>, #{}, 20_000),
     catch macula_client:close(Pool),
-    [S || S <- macula_record:payload_field(Payload, <<"stations">>), is_map(S),
-          maps:is_key(hostname, S), maps:is_key(node_id, S)].
+    Rows = field(Payload, <<"stations">>),
+    [normalized_row(R) || R <- Rows, is_map(R)].
+
+%% The wire tags every text key ({text, K}); the directory's rows arrive
+%% tagged. Normalise to plain keys, and skip a row missing what a dial
+%% needs.
+normalized_row(Row) ->
+    Host = field(Row, <<"hostname">>),
+    Node = field(Row, <<"node_id">>),
+    Port = field(Row, <<"quic_port">>),
+    #{hostname => Host, node_id => Node, quic_port => Port}.
+
+field(Map, Key) ->
+    Value = case maps:find(Key, Map) of
+                {ok, V} -> V;
+                error   -> maps:get({text, Key}, Map, undefined)
+            end,
+    case Value of
+        {text, Text} -> Text;
+        Other        -> Other
+    end.
 
 seed_pair() ->
     [#{host => <<"station-nl-ams.macula.io">>, port => 4433,
@@ -134,9 +177,10 @@ pull({ok, Reply}) when is_map(Reply) -> ok;
 pull(Other) -> Other.
 
 opened({macula_event, _Ref, _Topic, Payload, _Meta}) ->
-    case macula_record:payload_field(Payload, <<"fact">>) of
+    case macula:field(fact, Payload) of
         {text, ?MARKER} -> ok;
-        _ -> wrong_payload
+        ?MARKER         -> ok;
+        _               -> wrong_payload
     end;
 opened(Other) -> Other.
 
