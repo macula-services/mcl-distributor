@@ -30,7 +30,11 @@ The group-key distributor for [Macula](https://github.com/macula-io/macula)'s se
 
 **What it holds:** each group's epoch keys, in memory only, rotated every `MCL_GROUP_ROTATE_MS` (default 15 minutes). Keys never travel readable by a station: the pull is a sealed call (`confidential => required`), refused in the clear by the link before the handler runs.
 
-**What it decides:** membership, per pull, against the realm slot (`MCL_REALM` + `MCL_GROUP_REALM_KEY_ID`) and the org's `group_keys` UCAN (the procedure's `auth` policy, checked by the link). The removed set is in memory; a revoked member is refused every epoch.
+**What it decides:** membership, per pull: first the org's removed set, then the realm slot (`MCL_REALM` + `MCL_GROUP_REALM_KEY_ID`), with the org's `group_keys` UCAN checked by the link before either (the procedure's `auth` policy). The removed set is a file on the service's own volume, `removed_members`, one node id (64 hex characters) per line, read at every pull: a member whose id is there is refused every epoch from its next pull, and the set survives a restart. A set that cannot be read, or holds a malformed line, refuses every caller.
+
+**What it shows:** no epoch key in its process state, its status or a crash report (macula 14.10), and the VM writes no crash dump. It runs without an Erlang distribution listener: no cookie, no epmd, `-dist_listen false`, so nothing accepts a node connection and no remote shell or dist-eval reaches the keys. The release's `remote_console` and `eval` do not work against it, by design.
+
+The architecture (C4 context, containers, components) is in [architecture/README.md](architecture/README.md).
 
 ## Deploy config
 
@@ -41,9 +45,10 @@ The group-key distributor for [Macula](https://github.com/macula-io/macula)'s se
 | `MCL_GROUP_REALM_KEY_ID` | The realm key id (hex) the membership check pins the realm slot to |
 | `MCL_GROUP_POLICY` | `required` (default), `preferred`, or `off` |
 | `MCL_GROUP_ROTATE_MS` | Epoch rotation interval, default 900000 |
+| `MCL_GROUP_REMOVED_FILE` | The removed set, default `/var/lib/mcl-distributor/removed_members` on the service's named volume |
 | `MCL_REALM`, `MCL_REALM_KEY`, `MCL_REALM_NAME` | The realm this service lives in (as every mcl-* service) |
 
-Everything above is public material; the only secret is the node identity key in the mounted secrets volume.
+The ids above are exactly 64 hex characters, or the service refuses to boot. Everything above is public material; the only secret is the node identity key in the mounted secrets volume.
 
 ## Trust and blast radius
 

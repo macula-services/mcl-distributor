@@ -16,7 +16,7 @@
 
 info() ->
     #{name => <<"mcl-distributor">>,
-      version => <<"0.1.0">>,
+      version => <<"0.2.0">>,
       description => <<"Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls">>}.
 
 %% @doc The distributor starts here, after mcl_om's pool: its default
@@ -47,20 +47,19 @@ health() ->
 %% MCL_GROUP_ORG_KEY_ID is filled (from the published org_directory)
 %% registers this one.
 %%
-%% `auth' gates the procedure on the org's `group_keys' UCAN, checked by
-%% the link before the handler runs; `confidential => required' makes the
-%% link refuse a clear pull, so a key never travels readable by a
-%% station.
+%% The SDK's advertise_opts/1 supplies `auth', which gates the procedure
+%% on the org's `group_keys' UCAN, checked by the link before the handler
+%% runs, and `confidential => required', which makes the link refuse a
+%% clear pull, so a key never travels readable by a station.
 capabilities() ->
     case mcl_distributor:org_key_id() of
         undefined ->
             [];
         OrgKeyId ->
-            [#{name => <<"group_keys_v1">>,
-               version => 1,
-               handler => {mcl_distributor_pull, []},
-               auth => {realm_member_required, OrgKeyId, <<"group_keys">>},
-               confidential => required}]
+            [maps:merge(#{name => <<"group_keys_v1">>,
+                          version => 1,
+                          handler => {mcl_distributor_pull, []}},
+                        macula_group_keys:advertise_opts(OrgKeyId))]
     end.
 
 %% THE AUTHORITY THIS SERVICE ASKS THE REALM FOR, and deliberately nothing

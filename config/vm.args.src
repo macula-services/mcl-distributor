@@ -1,6 +1,13 @@
-## Node identity and runtime flags for mcl_distributor.
--name ${MCL_NODE_NAME}@${MCL_NODE_HOST}
--setcookie ${MCL_COOKIE}
+## Runtime flags for mcl_distributor.
+
+## NO ERLANG DISTRIBUTION LISTENER. The distributor serves members over the
+## mesh (sealed calls) and uses no distributed Erlang. relx's start script
+## demands a node name, so the node has a short one, but it starts no epmd
+## and never listens for a node connection, and it has no cookie: no remote
+## shell or dist-eval can reach the process that holds the epoch keys.
+-sname mcl_distributor
+-start_epmd false
+-dist_listen false
 
 +K true
 

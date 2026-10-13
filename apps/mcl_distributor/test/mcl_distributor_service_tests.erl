@@ -2,8 +2,9 @@
 %%% @doc The service contract, and the pull handler forwarding to a live
 %%% distributor. The seal machinery itself is macula's, tested there;
 %%% this suite pins THIS service's wiring: the six callbacks, the
-%%% capability's sealed-only shape, the env refusals, and the
-%%% `{Module, Function}' handler reaching a registered distributor.
+%%% capability's sealed-only shape, the env refusals, the removed set, the
+%%% handler's answers and refusals, and the image's no-distribution,
+%%% no-dump posture.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(mcl_distributor_service_tests).
@@ -123,21 +124,148 @@ health_is_down_without_a_distributor_test() ->
     end.
 
 %%------------------------------------------------------------------
+%% The handler's refusals reach the member as the SDK names them
+%%------------------------------------------------------------------
+
+a_removed_member_is_refused_through_the_handler_test() ->
+    Removed = crypto:strong_rand_bytes(32),
+    with_distributor(#{removed => fun(Caller) -> Caller =:= Removed end},
+                     fun() ->
+                         ?assertMatch({error, not_a_member, _}, pull(?PREFIX, Removed)),
+                         ?assertMatch({reply, #{epochs := [_]}, _}, pull(?PREFIX, crypto:strong_rand_bytes(32)))
+                     end).
+
+another_orgs_group_is_refused_through_the_handler_test() ->
+    with_distributor(#{}, fun() ->
+        ?assertMatch({error, unknown_group, _}, pull(<<"io.macula/contoso/chat">>, crypto:strong_rand_bytes(32)))
+    end).
+
+a_pull_while_the_distributor_is_away_is_no_distributor_test() ->
+    catch unregister(mcl_distributor),
+    ?assertMatch({error, no_distributor, _}, pull(?PREFIX, crypto:strong_rand_bytes(32))).
+
+%%------------------------------------------------------------------
+%% The removed set: a file on the volume, read at every pull
+%%------------------------------------------------------------------
+
+a_missing_removed_set_is_empty_test() ->
+    ?assertEqual({ok, []}, mcl_distributor_removed_members:read(scratch("absent"))),
+    ?assertNot(mcl_distributor_removed_members:removed(scratch("absent"), <<1:256>>)).
+
+the_removed_set_lists_node_ids_skipping_blanks_and_comments_test() ->
+    Path = scratch("removed_members"),
+    A = <<1:256>>, B = <<2:256>>,
+    ok = file:write_file(Path, [<<"# removed 2026-10-13
+">>, binary:encode_hex(A), <<"
+
+  ">>,
+                                binary:encode_hex(B, lowercase), <<"  
+">>]),
+    ?assertEqual({ok, [A, B]}, mcl_distributor_removed_members:read(Path)),
+    ?assert(mcl_distributor_removed_members:removed(Path, B)),
+    ?assertNot(mcl_distributor_removed_members:removed(Path, <<3:256>>)).
+
+%% A removal that cannot be read must not admit the member it names.
+a_malformed_removed_set_refuses_every_caller_test() ->
+    Path = scratch("malformed"),
+    ok = file:write_file(Path, [binary:encode_hex(<<1:256>>), <<"
+not-a-node-id
+">>]),
+    ?assertEqual({error, {malformed_line, 2}}, mcl_distributor_removed_members:read(Path)),
+    ?assert(mcl_distributor_removed_members:removed(Path, <<3:256>>)).
+
+an_unreadable_removed_set_refuses_every_caller_test() ->
+    Dir = scratch("a_directory"),
+    ok = filelib:ensure_path(Dir),
+    ?assert(mcl_distributor_removed_members:removed(Dir, <<3:256>>)).
+
+a_malformed_removed_set_stops_the_boot_test() ->
+    Path = scratch("malformed_boot"),
+    ok = file:write_file(Path, <<"abc\n">>),
+    {ok, Env} = save_env(),
+    try
+        true = os:putenv("MCL_GROUP_REMOVED_FILE", Path),
+        ?assertError({mcl_distributor, {removed_set, Path, {malformed_line, 1}}}, mcl_distributor:options())
+    after
+        restore_env(Env)
+    end.
+
+%%------------------------------------------------------------------
+%% Ids from env are exactly 64 hex characters
+%%------------------------------------------------------------------
+
+an_id_that_is_not_64_hex_stops_the_boot_test_() ->
+    [?_test(begin
+         {ok, Env} = save_env(),
+         try
+             true = os:putenv("MCL_REALM", Bad),
+             ?assertError({mcl_distributor, {not_64_hex, "MCL_REALM"}}, mcl_distributor:realm())
+         after
+             restore_env(Env)
+         end
+     end) || Bad <- [lists:duplicate(63, $a), lists:duplicate(66, $a), lists:duplicate(64, $g)]].
+
+%%------------------------------------------------------------------
+%% The image: no distribution, no crash dump, the removed set's volume
+%%------------------------------------------------------------------
+
+the_image_writes_no_crash_dump_and_keeps_the_removed_set_test() ->
+    {ok, Containerfile} = file:read_file("Containerfile"),
+    ?assertEqual(nomatch, re:run(Containerfile, <<"^ENV (MCL_COOKIE|MCL_NODE_NAME|MCL_NODE_HOST|ERL_EPMD_ADDRESS)">>, [multiline])),
+    ?assertMatch({match, _}, re:run(Containerfile, <<"^ENV ERL_CRASH_DUMP_SECONDS=0$">>, [multiline])),
+    ?assertMatch({match, _}, re:run(Containerfile, <<"^VOLUME \\[\"/var/lib/mcl-distributor\"\\]$">>, [multiline])).
+
+%% The node holds epoch keys and uses no distributed Erlang: no cookie, no
+%% epmd, and no listener for a node connection. The short name is only what
+%% relx's start script demands; a long name would also mean an address.
+the_node_listens_for_no_distribution_test() ->
+    {ok, VmArgs} = file:read_file("config/vm.args.src"),
+    ?assertEqual(nomatch, re:run(VmArgs, <<"^-(name|setcookie)\\b">>, [multiline])),
+    ?assertMatch({match, _}, re:run(VmArgs, <<"^-start_epmd false$">>, [multiline])),
+    ?assertMatch({match, _}, re:run(VmArgs, <<"^-dist_listen false$">>, [multiline])).
+
+%% Nothing in the service needs distribution: a call that would is a sign the
+%% no-distribution posture above was broken by a later change.
+no_module_uses_distributed_erlang_test() ->
+    Sources = filelib:wildcard("apps/mcl_distributor/src/*.erl"),
+    ?assertNotEqual([], Sources),
+    ?assertEqual([], [S || S <- Sources,
+                           {ok, Bin} <- [file:read_file(S)],
+                           re:run(Bin, <<"\\b(net_kernel|erpc|rpc|global|pg):|\\bnodes\\(">>) =/= nomatch]).
+
+%%------------------------------------------------------------------
+%% Helpers
+%%------------------------------------------------------------------
+
+%% A distributor registered as the handler finds it, with `Opts' over the defaults, for the length of `Test'.
+with_distributor(Opts, Test) ->
+    {ok, Pid} = macula_group_keys:start_link(
+                  maps:merge(#{org => ?ORG, policy => required, membership => fun(_Caller) -> ok end}, Opts)),
+    true = register(mcl_distributor, Pid),
+    try Test() after unregister(mcl_distributor), gen_server:stop(Pid) end.
+
+pull(Prefix, Caller) ->
+    mcl_distributor_pull:handle_request(#{{text, <<"prefix">>} => {text, Prefix},
+                                          {text, <<"epoch">>} => {text, <<"current">>},
+                                          caller => Caller}, undefined).
+
+scratch(Name) ->
+    Dir = filename:join(["_build", "test", "mcl_distributor_tests", integer_to_list(erlang:unique_integer([positive]))]),
+    ok = filelib:ensure_path(Dir),
+    filename:join(Dir, Name).
+
+%%------------------------------------------------------------------
 %% Env save/restore, so one suite never leaks into another
 %%------------------------------------------------------------------
 
+-define(ENV, ["MCL_GROUP_ORG", "MCL_GROUP_ORG_KEY_ID", "MCL_GROUP_REALM_KEY_ID", "MCL_REALM", "MCL_GROUP_REMOVED_FILE"]).
+
 save_env() ->
-    {ok, #{org => os:getenv("MCL_GROUP_ORG"),
-           org_key_id => os:getenv("MCL_GROUP_ORG_KEY_ID"),
-           realm_key_id => os:getenv("MCL_GROUP_REALM_KEY_ID"),
-           realm => os:getenv("MCL_REALM")}}.
+    {ok, maps:from_list([{Name, os:getenv(Name)} || Name <- ?ENV])}.
 
 restore_env(Env) ->
-    restore("MCL_GROUP_ORG", maps:get(org, Env)),
-    restore("MCL_GROUP_ORG_KEY_ID", maps:get(org_key_id, Env)),
-    restore("MCL_GROUP_REALM_KEY_ID", maps:get(realm_key_id, Env)),
-    restore("MCL_REALM", maps:get(realm, Env)),
-    ok.
+    maps:foreach(fun restore/2, Env).
 
-restore(_Name, false) -> ok;
-restore(Name, Value) -> os:putenv(Name, Value), ok.
+%% A variable that was unset before the test is unset again, not left as the test set it.
+restore(Name, false) -> true = os:unsetenv(Name), ok;
+restore(Name, Value) -> true = os:putenv(Name, Value), ok.

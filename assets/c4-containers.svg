@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" role="img" aria-label="mcl-distributor containers">
+<title>mcl-distributor containers</title>
+<style>
+.t-name { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; font-size: 15px; font-weight: 700; }
+.t-desc { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; font-size: 12.5px; }
+.t-rel { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; font-size: 11.5px; paint-order: stroke; stroke-width: 4px; stroke-linejoin: round; }
+.t-code { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 13px; font-weight: 600; }
+.t-type { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+.t-bound { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 12px; font-weight: 600; }
+.t-leg { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif; font-size: 12px; }
+.edge { fill: none; stroke-width: 1.25; }
+.edge-later { fill: none; stroke-width: 1.25; stroke-dasharray: 5 4; }
+.bg { fill: #FFFFFF; }
+.b-sys { fill: #F5E9CC; stroke: #A56F0A; stroke-width: 2; }
+.b-per { fill: #E3EBF2; stroke: #3B5B7A; stroke-width: 1.25; }
+.b-mac { fill: #E6E4EE; stroke: #5E5A78; stroke-width: 1.25; }
+.b-ext { fill: #ECEFED; stroke: #8A9791; stroke-width: 1.25; }
+.b-cmp { fill: #FFFFFF; stroke: #8A9791; stroke-width: 1.25; }
+.b-later { fill: none; stroke: #8A9791; stroke-width: 1.25; stroke-dasharray: 5 4; }
+.bound { fill: none; stroke: #B3BDB8; stroke-width: 1; }
+.head { fill: #3B5B7A; }
+.t-name, .t-code { fill: #16201D; }
+.t-type, .t-bound, .t-leg { fill: #66736E; }
+.t-desc { fill: #34413C; }
+.t-rel { fill: #66736E; stroke: #FFFFFF; }
+.edge, .edge-later { stroke: #8A9791; }
+.arrowhead { fill: #8A9791; }
+@media (prefers-color-scheme: dark) {
+.bg { fill: #171F1C; }
+.b-sys { fill: #3A2E13; stroke: #E3AA3C; }
+.b-per { fill: #1D2A36; stroke: #8EB4D8; }
+.b-mac { fill: #26243A; stroke: #A9A4C8; }
+.b-ext { fill: #1C2421; stroke: #7D8B85; }
+.b-cmp { fill: #171F1C; stroke: #7D8B85; }
+.b-later { stroke: #7D8B85; }
+.bound { stroke: #4A5752; }
+.head { fill: #8EB4D8; }
+.t-name, .t-code { fill: #E6ECE9; }
+.t-type, .t-bound, .t-leg { fill: #93A09A; }
+.t-desc { fill: #C3CDC8; }
+.t-rel { fill: #93A09A; stroke: #171F1C; }
+.edge, .edge-later { stroke: #7D8B85; }
+.arrowhead { fill: #7D8B85; }
+}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+<rect class="bg" x="0" y="0" width="1000" height="520"/>
+<rect class="bound" x="24" y="40" width="620" height="420" rx="12"/>
+<text class="t-bound" x="40" y="62">A lab box [docker, reconciled from the fleet repository]</text>
+<rect class="b-sys" x="44" y="76" width="580" height="120" rx="10"/>
+<text class="t-name" x="60" y="104">mcl-distributor service</text>
+<text class="t-type" x="60" y="122">[mcl_om mesh service, OCI image, OTP 28 release]</text>
+<text class="t-desc" x="60" y="146">Boots as an mcl_om service: identity key, realm admission, a mesh pool, Org/info</text>
+<text class="t-desc" x="60" y="162">and /health. Advertises group_keys_v1 sealed-only once the org key id is known.</text>
+<text class="t-desc" x="60" y="178">No Erlang distribution listener, cookie or epmd; writes no crash dump.</text>
+<rect class="b-cmp" x="44" y="220" width="280" height="112" rx="10"/>
+<text class="t-name" x="60" y="248">Identity key</text>
+<text class="t-type" x="60" y="266">[Named volume]</text>
+<text class="t-desc" x="60" y="290">/etc/mcl/secrets: the node's key, the</text>
+<text class="t-desc" x="60" y="306">provider id members pin it by</text>
+<rect class="b-cmp" x="344" y="220" width="280" height="112" rx="10"/>
+<text class="t-name" x="360" y="248">Removed set</text>
+<text class="t-type" x="360" y="266">[Named volume]</text>
+<text class="t-desc" x="360" y="290">/var/lib/mcl-distributor/removed_members:</text>
+<text class="t-desc" x="360" y="306">one node id per line, read at every</text>
+<text class="t-desc" x="360" y="322">pull, kept across restarts</text>
+<rect class="b-cmp" x="44" y="352" width="580" height="84" rx="10"/>
+<text class="t-name" x="60" y="380">/health</text>
+<text class="t-type" x="60" y="398">[Unix socket /run/mcl/health.sock]</text>
+<text class="t-desc" x="60" y="422">The container healthcheck; internal to the box, not on the mesh.</text>
+<rect class="b-mac" x="690" y="76" width="286" height="96" rx="10"/>
+<text class="t-name" x="706" y="104">Macula mesh</text>
+<text class="t-type" x="706" y="122">[Macula infrastructure]</text>
+<text class="t-desc" x="706" y="146">Entry: pinned stations (QUIC)</text>
+<rect class="b-mac" x="690" y="190" width="286" height="88" rx="10"/>
+<text class="t-name" x="706" y="218">macula-realm</text>
+<text class="t-type" x="706" y="236">[Macula infrastructure]</text>
+<text class="t-desc" x="706" y="260">Admission; trust anchor</text>
+<rect class="b-ext" x="690" y="300" width="286" height="96" rx="10"/>
+<text class="t-name" x="706" y="328">ghcr.io</text>
+<text class="t-type" x="706" y="346">[External system]</text>
+<text class="t-desc" x="706" y="370">The signed image, pinned by digest</text>
+<text class="t-desc" x="706" y="386">in the fleet repository</text>
+<path class="edge" d="M624 124H690" marker-end="url(#a)"/>
+<text class="t-rel" x="657" y="116" text-anchor="middle">joins</text>
+<path class="edge" d="M624 170H660V234H690" marker-end="url(#a)"/>
+<text class="t-rel" x="668" y="206" text-anchor="middle" transform="rotate(-90 668 206)">claim</text>
+<path class="edge" d="M690 348H644V186H624" marker-end="url(#a)"/>
+<text class="t-rel" x="652" y="300" text-anchor="middle" transform="rotate(-90 652 300)">pulled from</text>
+<path class="edge" d="M184 196V220" marker-end="url(#a)"/>
+<text class="t-rel" x="192" y="212">reads</text>
+<path class="edge" d="M484 196V220" marker-end="url(#a)"/>
+<text class="t-rel" x="492" y="212">reads at every pull</text>
+<rect class="b-sys" x="24" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="54" y="502">In scope</text>
+<rect class="b-per" x="110.8" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="140.8" y="502">Person</text>
+<rect class="b-mac" x="184.39999999999998" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="214.39999999999998" y="502">Macula infrastructure</text>
+<rect class="b-ext" x="357.0" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="387.0" y="502">External system</text>
+<rect class="b-cmp" x="490.0" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="520.0" y="502">Container or component</text>
+<rect class="b-later" x="669.2" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="699.2" y="502">Planned, not built</text>
+<rect class="bound" x="822.0" y="490" width="22" height="14" rx="3"/>
+<text class="t-leg" x="852.0" y="502">Boundary</text>
+</svg>

@@ -10,16 +10,22 @@
 %%% and rotations fail closed until it is back.
 %%%
 %%% Membership is the DEFAULT path: the realm slot read over the mesh
-%%% pool (`pool'), pinned by `realm' and `realm_key_id', verified under
-%%% the node's crypto profile. Every piece of that is public material.
+%%% pool, pinned by `realm' and `realm_key_id', verified under the node's
+%%% crypto profile. Every piece of that is public material. The pool is
+%%% given by its registered name, which the SDK looks up at every read, so
+%%% a pool mcl_om's supervisor restarts is found again. Before membership,
+%%% the org's removed set (mcl_distributor_removed_members) refuses every
+%%% node the org has removed.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(mcl_distributor).
 
--export([start_link/0, options/0, org/0, policy/0, org_key_id/0, realm/0, realm_key_id/0]).
+-export([start_link/0, options/0, org/0, policy/0, org_key_id/0, realm/0, realm_key_id/0, removed_file/0,
+         node_id/1]).
 
 -define(POOL, mcl_om_mesh_pool).
 -define(DEFAULT_ROTATE_MS, 15 * 60000).
+-define(DEFAULT_REMOVED_FILE, "/var/lib/mcl-distributor/removed_members").
 
 %% @doc Start the distributor and register it by name. The name is what
 %% the pull handler forwards to; a supervisor restart re-registers it
@@ -41,15 +47,34 @@ started(Error) ->
 %% The policy's `org_key_id' names the org's PUBLIC key (the
 %% org_directory's org_key), which the realm_member_required check
 %% matches the caller's UCAN issuer against.
--spec options() -> map().
+-spec options() -> macula_group_keys:options().
 options() ->
+    RemovedFile = removed_set_checked(removed_file()),
     #{org => org(),
       policy => policy(),
       rotate_after_ms => rotate_after_ms(),
       pool => pool(),
+      removed => fun(Caller) -> mcl_distributor_removed_members:removed(RemovedFile, Caller) end,
       realm => realm(),
       realm_key_id => realm_key_id(),
       profile => profile()}.
+
+%% @doc The removed set's file, on the persistent volume:
+%% `MCL_GROUP_REMOVED_FILE', or /var/lib/mcl-distributor/removed_members.
+-spec removed_file() -> string().
+removed_file() ->
+    case os:getenv("MCL_GROUP_REMOVED_FILE") of
+        false -> ?DEFAULT_REMOVED_FILE;
+        ""    -> ?DEFAULT_REMOVED_FILE;
+        Path  -> Path
+    end.
+
+%% A removed set that cannot be read is refused at boot, before anyone pulls.
+removed_set_checked(Path) ->
+    removed_set_read(mcl_distributor_removed_members:read(Path), Path).
+
+removed_set_read({ok, _NodeIds}, Path) -> Path;
+removed_set_read({error, Reason}, Path) -> error({mcl_distributor, {removed_set, Path, Reason}}).
 
 -spec org() -> binary().
 org() ->
@@ -78,7 +103,7 @@ org_key_id() ->
     case os:getenv("MCL_GROUP_ORG_KEY_ID") of
         false -> undefined;
         ""    -> undefined;
-        Hex   -> decode_hex(list_to_binary(Hex))
+        Hex   -> hex_32("MCL_GROUP_ORG_KEY_ID", list_to_binary(Hex))
     end.
 
 rotate_after_ms() ->
@@ -90,19 +115,20 @@ rotate_after_ms() ->
 realm() ->
     %% MCL_REALM carries the realm id as 64 hex chars; the membership check's
     %% trust wants the 32 bytes they decode to.
-    decode_hex(required_binary("MCL_REALM")).
+    hex_32("MCL_REALM", required_binary("MCL_REALM")).
 
-%% The mesh pool by its registered name, as a pid: the SDK's options type
-%% demands a pid, and a missing pool is refused here, at boot, never by the
-%% first member whose pull would fail.
+%% The mesh pool by its registered name, which the SDK looks up at every
+%% membership read: a pid read once here would die with the first pool
+%% restart, and every pull after it would crash the distributor. A pool not
+%% started at all is refused here, at boot, never by the first member.
 pool() ->
     case whereis(?POOL) of
         undefined -> error({mcl_distributor, pool_not_started});
-        Pid       -> Pid
+        _Pid      -> ?POOL
     end.
 
 realm_key_id() ->
-    decode_hex(required_binary("MCL_GROUP_REALM_KEY_ID")).
+    hex_32("MCL_GROUP_REALM_KEY_ID", required_binary("MCL_GROUP_REALM_KEY_ID")).
 
 profile() ->
     {ok, Profile} = macula_crypto_profile:configured(),
@@ -115,5 +141,22 @@ required_binary(Name) ->
         Value -> list_to_binary(Value)
     end.
 
-decode_hex(Hex) ->
-    << <<(list_to_integer([A, B], 16))>> || <<A:8, B:8>> <= Hex >>.
+%% A 32-byte id from deploy env: exactly 64 hex characters, or the boot stops
+%% and names the variable. A shorter value would decode to a short id that
+%% matches nothing, and every pull would be refused while /health says ok.
+hex_32(Name, Hex) ->
+    hex_decoded(node_id(Hex), Name).
+
+hex_decoded({ok, Id}, _Name) -> Id;
+hex_decoded(error, Name) -> error({mcl_distributor, {not_64_hex, Name}}).
+
+%% @doc A 32-byte id from exactly 64 hex characters, either case.
+-spec node_id(binary()) -> {ok, <<_:256>>} | error.
+node_id(Hex) when byte_size(Hex) =:= 64 ->
+    try binary:decode_hex(Hex) of
+        Id -> {ok, Id}
+    catch
+        error:badarg -> error
+    end;
+node_id(_NotSixtyFour) ->
+    error.

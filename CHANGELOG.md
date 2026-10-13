@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 (2026-10-13)
+
+Supersedes 0.1.1, which was tagged off main and never gated (mcl-distributor#1).
+
+- **The org can remove a member.** The removed set is a file on the service's own volume (`MCL_GROUP_REMOVED_FILE`, default `/var/lib/mcl-distributor/removed_members`), read at every pull and kept across restarts; a removed node is refused every epoch. A set that cannot be read refuses every caller, and a malformed one stops the boot.
+- **No epoch key in a log or a dump.** On macula 14.10 the distributor keeps its epochs out of its process state and redacts them in status and crash reports. The image sets `ERL_CRASH_DUMP_SECONDS=0`, so the VM writes no crash dump.
+- **A pool restart no longer crashes the distributor.** The mesh pool is passed by its registered name and looked up at every membership read.
+- **No Erlang distribution listener.** The node starts with no cookie, `-start_epmd false` and `-dist_listen false` (a short name stays, because relx's start script requires one): the distributor serves members over the mesh and uses no distributed Erlang, so nothing accepts a node connection, and no remote shell or dist-eval (the path that once printed keys) reaches the process holding them. The release's `remote_console` and `eval` no longer work against it, by design. The image sets no `MCL_COOKIE`, `MCL_NODE_NAME` or `MCL_NODE_HOST`.
+- **Ids from env are exactly 64 hex characters**, or the boot stops naming the variable; a short one used to match nothing while /health said ok.
+- **A refusal reaches the member as the SDK names it** (`not_a_member`, `unknown_group`, ...), no longer wrapped twice; a pull while the distributor restarts is `no_distributor` instead of a crashed handler.
+- The capability takes `macula_group_keys:advertise_opts/1`; C4 model in `architecture/`.
+
 ## 0.1.0 (2026-10-11)
 
-- **The group-key distributor as a service:** `macula_group_keys` under mcl_om, advertising `<org>/group_keys_v1` with the `realm_member_required` `group_keys` policy and `confidential => required`, the default realm-slot membership, and the `{mcl_distributor_pull, pull}` handler forwarding to the registered distributor.
+- **The group-key distributor as a service:** `macula_group_keys` under mcl_om, advertising `<org>/group_keys_v1` with the `realm_member_required` `group_keys` policy and `confidential => required`, the default realm-slot membership, and the `{mcl_distributor_pull, []}` handler forwarding to the registered distributor.

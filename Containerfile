@@ -2,10 +2,8 @@
 #
 # Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls
 #
-# NO DATA VOLUME AS GENERATED. The scaffold writes nothing, and a named volume
-# for data that does not exist is a promise the image cannot keep. Add one
-# together with the code that writes it, and declare it here and in the compose
-# file at the same time.
+# ONE DATA VOLUME: /var/lib/mcl-distributor holds the org's removed set
+# (removed_members), which must survive a restart. Mount a named volume there.
 
 # ⚠ THE TEAM IMAGE PAIR, PINNED BY DATED TAG AND DIGEST. macula-ci-otp is
 # macula-io/macula-ci-images' build image: OTP 28.4.3 on Debian trixie with an
@@ -58,9 +56,14 @@ COPY --from=builder /build/_build/prod/rel/mcl_distributor ./
 ENV HOME=/app
 ENV RELX_REPLACE_OS_VARS=true
 
-ENV MCL_NODE_NAME=mcl_distributor
-ENV MCL_NODE_HOST=127.0.0.1
-ENV MCL_COOKIE=mcl_distributor
+# NO ERLANG DISTRIBUTION LISTENER (vm.args.src): no cookie, no epmd, and
+# -dist_listen false, so nothing accepts a node connection. The release's
+# remote_console and eval need one, so they do not work against this node,
+# by design: it holds epoch keys.
+
+# NO CRASH DUMP. A dump copies every process heap, where epoch keys pass on
+# their way to a member; 0 makes the VM write none.
+ENV ERL_CRASH_DUMP_SECONDS=0
 
 # Every ${VAR} in sys.config must resolve or the term is malformed, so the
 # required ones (MCL_GROUP_ORG, MCL_GROUP_ORG_KEY_ID, MCL_GROUP_REALM_KEY_ID,
@@ -73,6 +76,11 @@ ENV MCL_GROUP_ROTATE_MS=900000
 # The node identity key. Mount a NAMED volume here (the fleet's compose
 # does): the key is the distributor's verified identity on the mesh.
 VOLUME ["/etc/mcl/secrets"]
+
+# The org's removed set, one node id per line (mcl_distributor_removed_members).
+# A NAMED volume: a set lost to a recreate re-admits every removed member.
+RUN mkdir -p /var/lib/mcl-distributor
+VOLUME ["/var/lib/mcl-distributor"]
 
 # /health is served on a Unix socket only (mcl_om health_socket); mcl_om
 # creates the socket, mode 0600, in this directory.
