@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-10-14
+
+- **Rebuilt on mcl_om 0.40** (mcl-om#25): a lapsed provider delegation claims again and comes back without a restart, and `/health` shows each authorization's `not_after_ms`, degraded as `expiring` with a third or less of its life left.
+
 ## 0.2.0 (2026-10-13)
 
 Supersedes 0.1.1, which was tagged off main and never gated (mcl-distributor#1).
