@@ -93,7 +93,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
-    uses: macula-io/macula-ci-images/.github/workflows/attest-image.yml@601c719b7cfbd8ed15852281d87c652d776a6ae7
+    uses: macula-io/macula-ci-images/.github/workflows/attest-image.yml@fa59fba58d1b65dce35f8613dcb257273a0f29ed
     with:
       image: ghcr.io/macula-services/mcl-distributor
       digest: ${{ needs.build-and-push.outputs.digest }}
