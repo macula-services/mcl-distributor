@@ -40,7 +40,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # NO IMAGE WHILE ITS OWN TESTS ARE RED. lint.yml, called on the commit
+  # this run builds, and the build waits on it (mcl-om#34).
+  test:
+    uses: ./.github/workflows/lint.yml
+
   build-and-push:
+    needs: test
     outputs:
       digest: ${{ steps.push.outputs.digest }}
     runs-on: ubuntu-latest
