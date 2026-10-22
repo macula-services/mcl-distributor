@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The base library is macula 16** (macula-codebase-checks#4): the floor moves `~> 15.6` to `~> 16.0`, and `mcl_om` from `~> 1.0` to `~> 1.4`. This is the one service where the move has a behavioural edge: a key pull checks the caller's realm endorsement slot (`macula_group_keys` through `macula_hyparview_endorsement:slot_endorsement/4`), and under 16.0 an endorsement whose window exceeds 24 hours is refused as `endorsement_window_too_long`, while a revoked member is refused at once where the tombstone is readable (macula#118). Both live realms already issue 24-hour windows and renew them hourly (macula-realm 0.8.2, `EndorsementSweep`), so a pull over a live membership is unaffected.
+
 ## 0.3.0 - 2026-10-17
 
 - wire 1.0: on macula 15.6 / mcl_om 1.0 (macula-io/macula#105). A wire 1.0 node and a 0.10.3-fleet node do not interoperate, so this release reaches a box only on the flag day (macula-io/macula-fleet#27).
