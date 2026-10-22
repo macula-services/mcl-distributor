@@ -25,7 +25,7 @@ on:
     # A push to main rebuilds :main (a tag push ignores this filter). One that changes no
     # code must not: a docs-only commit once reset a whole fleet.
     # assets/ holds the C4 diagrams, which no build reads: a diagram-only commit must
-    # not rebuild an image and restart the box.
+    # not rebuild and re-push an image.
     paths-ignore:
       - '**.md'
       - 'docs/**'

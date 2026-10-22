@@ -55,3 +55,5 @@ the member is refused every epoch, `not_a_member`, whatever its realm
 membership or its UCAN says. It keeps the epochs it already holds until their
 acceptance ends (DESIGN_E2E_SEALED_PUBSUB §8): a removal stops new keys, not
 old ones.
+
+**Where the station list comes from.** It is not in `config/sys.config.src`: `mcl_om` reads `MACULA_STATION_SEEDS` and `MACULA_STATION_NODE_IDS` from the environment at boot, paired index for index, so this repository pins no station and the list may be any length.
