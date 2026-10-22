@@ -178,8 +178,8 @@ def components():
           ["Starts macula_group_keys for the org, registered", "by name: the pool by name, the removed set,",
            "the realm pins, ids checked as 64 hex at boot"], code=True)
     d.box("b-sys", 512, 200, 456, 130, "macula_group_keys", "[macula SDK gen_server]",
-          ["Admits by removed set, then realm membership;", "epochs in a private ets table, the state holds",
-           "its id only; format_status redacts keys"], code=True)
+          ["Admits by removed set, then realm membership;", "epochs in a private ets table, not in the state;",
+           "format_status redacts every key it shows"], code=True)
     d.box("b-cmp", 32, 370, 456, 110, "mcl_distributor_removed_members", "[module]",
           ["Reads removed_members at every pull;", "unreadable or malformed refuses everyone"], code=True)
     d.box("b-cmp", 512, 370, 456, 110, "mcl_distributor_sup", "[supervisor]",

@@ -44,7 +44,7 @@ pass.
 | `mcl_distributor_service` | The six `mcl_om_service` callbacks. One capability, `group_keys_v1`, with `macula_group_keys:advertise_opts/1` merged in: the org's `group_keys` grant and `confidential => required`. Omitted until `MCL_GROUP_ORG_KEY_ID` is known. |
 | `mcl_distributor_pull` | The `macula_response` handler. Forwards each pull to the distributor registered as `mcl_distributor`; returns a refusal as the SDK names it, and `no_distributor` while the distributor is restarting. |
 | `mcl_distributor` | Reads the deploy config and starts `macula_group_keys` for the org: the mesh pool by its registered name (looked up at every membership read), the removed set, the realm pins. Every id from env is exactly 64 hex characters, or the boot stops. |
-| `macula_group_keys` | The SDK's distributor (macula >= 14.10). Refuses a removed node, then a node that is not a live realm member; keeps the epochs in a private ets table, its state holding only the table's id; redacts keys in `format_status/1`. |
+| `macula_group_keys` | The SDK's distributor (macula >= 14.10). Refuses a removed node, then a node that is not a live realm member; keeps the epochs in a private ets table, the state naming the table but holding no key; redacts keys in `format_status/1`. |
 | `mcl_distributor_removed_members` | Reads the removed set at every pull. A missing file is an empty set; a file it cannot read, or a malformed line, refuses every caller. Checked at boot too. |
 | `mcl_distributor_sup` | One permanent worker. A restart loses only in-memory epochs: members holding the current one go on, and new joins wait for it. |
 

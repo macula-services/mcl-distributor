@@ -67,8 +67,8 @@
 <text class="t-code" x="528" y="228">macula_group_keys</text>
 <text class="t-type" x="528" y="246">[macula SDK gen_server]</text>
 <text class="t-desc" x="528" y="270">Admits by removed set, then realm membership;</text>
-<text class="t-desc" x="528" y="286">epochs in a private ets table, the state holds</text>
-<text class="t-desc" x="528" y="302">its id only; format_status redacts keys</text>
+<text class="t-desc" x="528" y="286">epochs in a private ets table, not in the state;</text>
+<text class="t-desc" x="528" y="302">format_status redacts every key it shows</text>
 <rect class="b-cmp" x="32" y="370" width="456" height="110" rx="10"/>
 <text class="t-code" x="48" y="398">mcl_distributor_removed_members</text>
 <text class="t-type" x="48" y="416">[module]</text>
