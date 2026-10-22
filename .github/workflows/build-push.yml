@@ -58,22 +58,6 @@ jobs:
   test:
     uses: ./.github/workflows/lint.yml
 
-  # THE SERVICE'S C4 MODEL: what it talks to, and what it is made of
-  # (macula-codebase-checks#10). Two diagrams in assets/, a context one and a
-  # component one, each shown by README.md or architecture/README.md, and this
-  # job red until they are there. architecture/README.md says what goes in them.
-  #
-  # IT IS NOT IN THE IMAGE'S PATH, ON PURPOSE: nothing `needs' it and it needs
-  # nothing, so a service publishes its image while a diagram is being drawn.
-  # Red here is the report, not a deploy block.
-  #
-  # The check is the house's and is pinned by full commit sha, like the release
-  # guard and the attest call.
-  c4-model:
-    permissions:
-      contents: read
-    uses: macula-io/macula-ci-images/.github/workflows/c4-model.yml@83a76a358456bf2f7d6c919ad5e8fe7fd2162ce3
-
   build-and-push:
     needs: [guard, test]
     outputs:
