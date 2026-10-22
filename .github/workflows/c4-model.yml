@@ -1,0 +1,31 @@
+# The service's C4 model: what it talks to, and what it is made of
+# (macula-codebase-checks#10). Two diagrams in assets/, a context one and a
+# component one, each shown by README.md or architecture/README.md, and this
+# workflow red until they are there.
+#
+# WHY ITS OWN FILE. The model is the reader's, not the deploy's: the
+# mcl_service template keeps it out of the image's path on purpose, so a red
+# diagram must never block a publish. That rules out the lint workflow, which
+# the image job takes as its test wherever it has one. It also rules out the
+# image workflow itself: it runs on a main push, a v* tag and a dispatch, and
+# where it does run for a pull request it ignores a change that is only a
+# diagram or a README. So the gate is its own workflow, started by every pull
+# request and by a push to main, with no path filter.
+#
+# The check is the house's, pinned by full commit sha as every shared call is.
+
+name: c4 model
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  c4-model:
+    permissions:
+      contents: read
+    uses: macula-io/macula-ci-images/.github/workflows/c4-model.yml@83a76a358456bf2f7d6c919ad5e8fe7fd2162ce3
