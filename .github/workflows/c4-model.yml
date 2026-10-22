@@ -3,14 +3,14 @@
 # component one, each shown by README.md or architecture/README.md, and this
 # workflow red until they are there.
 #
-# WHY ITS OWN FILE. A gate that only fires after a main push cannot stop a
-# diagram being dropped before it lands, and until 2026-10-22 this job sat in
-# build-push.yml, which runs on a main push, a v* tag and nothing else. Put into
-# lint-and-test.yml instead it would gate the image, because build-push calls
-# that workflow as its `test' job, and the mcl_service template keeps the model
-# out of the image's path on purpose: the diagram is the reader's, not the
-# deploy's. So it is its own workflow, started by every pull request and by a
-# push to main.
+# WHY ITS OWN FILE. The model is the reader's, not the deploy's: the
+# mcl_service template keeps it out of the image's path on purpose, so a red
+# diagram must never block a publish. That rules out the lint workflow, which
+# the image job takes as its test wherever it has one. It also rules out the
+# image workflow itself: it runs on a main push, a v* tag and a dispatch, and
+# where it does run for a pull request it ignores a change that is only a
+# diagram or a README. So the gate is its own workflow, started by every pull
+# request and by a push to main, with no path filter.
 #
 # The check is the house's, pinned by full commit sha as every shared call is.
 
