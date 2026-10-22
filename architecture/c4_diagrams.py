@@ -141,7 +141,7 @@ def context():
 
 def containers():
     d = Diagram("c4-containers.svg", "mcl-distributor containers", 1000, 520)
-    d.bound(24, 40, 620, 420, "A lab box [docker, reconciled from the fleet repository]")
+    d.bound(24, 40, 620, 420, "A fleet box [docker, reconciled from the fleet repository]")
     d.box("b-sys", 44, 76, 580, 120, "mcl-distributor service", "[mcl_om mesh service, OCI image, OTP 28 release]",
           ["Boots as an mcl_om service: identity key, realm admission, a mesh pool, /health.",
            "Advertises group_keys_v1 sealed-only once the org key id is known.",

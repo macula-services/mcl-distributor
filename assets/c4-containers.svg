@@ -46,7 +46,7 @@
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
 <rect class="bg" x="0" y="0" width="1000" height="520"/>
 <rect class="bound" x="24" y="40" width="620" height="420" rx="12"/>
-<text class="t-bound" x="40" y="62">A lab box [docker, reconciled from the fleet repository]</text>
+<text class="t-bound" x="40" y="62">A fleet box [docker, reconciled from the fleet repository]</text>
 <rect class="b-sys" x="44" y="76" width="580" height="120" rx="10"/>
 <text class="t-name" x="60" y="104">mcl-distributor service</text>
 <text class="t-type" x="60" y="122">[mcl_om mesh service, OCI image, OTP 28 release]</text>
