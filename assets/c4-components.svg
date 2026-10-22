@@ -47,12 +47,13 @@
 <rect class="bg" x="0" y="0" width="1000" height="580"/>
 <rect class="bound" x="16" y="40" width="968" height="480" rx="12"/>
 <text class="t-bound" x="32" y="62">mcl-distributor service [Container]</text>
-<rect class="b-cmp" x="32" y="70" width="456" height="100" rx="10"/>
+<rect class="b-cmp" x="32" y="70" width="456" height="112" rx="10"/>
 <text class="t-code" x="48" y="98">mcl_distributor_service</text>
 <text class="t-type" x="48" y="116">[mcl_om_service module]</text>
-<text class="t-desc" x="48" y="140">One capability, group_keys_v1, with the SDK's</text>
-<text class="t-desc" x="48" y="156">advertise_opts: the org grant and sealed calls</text>
-<rect class="b-cmp" x="512" y="70" width="456" height="100" rx="10"/>
+<text class="t-desc" x="48" y="140">group_keys_v1 is its own procedure, and the only one;</text>
+<text class="t-desc" x="48" y="156">mcl_om adds open info and get_limits to every service;</text>
+<text class="t-desc" x="48" y="172">capabilities/0 is the list.</text>
+<rect class="b-cmp" x="512" y="70" width="456" height="112" rx="10"/>
 <text class="t-code" x="528" y="98">mcl_distributor_pull</text>
 <text class="t-type" x="528" y="116">[macula_response handler]</text>
 <text class="t-desc" x="528" y="140">Forwards each pull to the registered</text>
@@ -79,8 +80,8 @@
 <text class="t-type" x="528" y="416">[supervisor]</text>
 <text class="t-desc" x="528" y="440">One permanent worker; a restart loses</text>
 <text class="t-desc" x="528" y="456">only in-memory epochs</text>
-<path class="edge" d="M740 170V200" marker-end="url(#a)"/>
-<text class="t-rel" x="748" y="190">calls by name</text>
+<path class="edge" d="M740 182V200" marker-end="url(#a)"/>
+<text class="t-rel" x="748" y="194">calls by name</text>
 <path class="edge" d="M488 265H512" marker-end="url(#a)"/>
 <text class="t-rel" x="500" y="256" text-anchor="middle">starts</text>
 <path class="edge" d="M260 330V370" marker-end="url(#a)"/>

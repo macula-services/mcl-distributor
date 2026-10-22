@@ -143,8 +143,8 @@ def containers():
     d = Diagram("c4-containers.svg", "mcl-distributor containers", 1000, 520)
     d.bound(24, 40, 620, 420, "A lab box [docker, reconciled from the fleet repository]")
     d.box("b-sys", 44, 76, 580, 120, "mcl-distributor service", "[mcl_om mesh service, OCI image, OTP 28 release]",
-          ["Boots as an mcl_om service: identity key, realm admission, a mesh pool, Org/info",
-           "and /health. Advertises group_keys_v1 sealed-only once the org key id is known.",
+          ["Boots as an mcl_om service: identity key, realm admission, a mesh pool, /health.",
+           "Advertises group_keys_v1 sealed-only once the org key id is known.",
            "No Erlang distribution listener, cookie or epmd; writes no crash dump."])
     d.box("b-cmp", 44, 220, 280, 112, "Identity key", "[Named volume]",
           ["/etc/mcl/secrets: the node's key, the", "provider id members pin it by"])
@@ -170,9 +170,11 @@ def containers():
 def components():
     d = Diagram("c4-components.svg", "mcl-distributor components", 1000, 580)
     d.bound(16, 40, 968, 480, "mcl-distributor service [Container]")
-    d.box("b-cmp", 32, 70, 456, 100, "mcl_distributor_service", "[mcl_om_service module]",
-          ["One capability, group_keys_v1, with the SDK's", "advertise_opts: the org grant and sealed calls"], code=True)
-    d.box("b-cmp", 512, 70, 456, 100, "mcl_distributor_pull", "[macula_response handler]",
+    d.box("b-cmp", 32, 70, 456, 112, "mcl_distributor_service", "[mcl_om_service module]",
+          ["group_keys_v1 is its own procedure, and the only one;",
+           "mcl_om adds open info and get_limits to every service;",
+           "capabilities/0 is the list."], code=True)
+    d.box("b-cmp", 512, 70, 456, 112, "mcl_distributor_pull", "[macula_response handler]",
           ["Forwards each pull to the registered", "distributor; no_distributor while it restarts"], code=True)
     d.box("b-sys", 32, 200, 456, 130, "mcl_distributor", "[worker start, deploy config]",
           ["Starts macula_group_keys for the org, registered", "by name: the pool by name, the removed set,",
@@ -184,7 +186,7 @@ def components():
           ["Reads removed_members at every pull;", "unreadable or malformed refuses everyone"], code=True)
     d.box("b-cmp", 512, 370, 456, 110, "mcl_distributor_sup", "[supervisor]",
           ["One permanent worker; a restart loses", "only in-memory epochs"], code=True)
-    d.edge("M740 170V200"); d.text("t-rel", 748, 190, "calls by name")
+    d.edge("M740 182V200"); d.text("t-rel", 748, 194, "calls by name")
     d.edge("M488 265H512"); d.text("t-rel", 500, 256, "starts", anchor="middle")
     d.edge("M260 330V370"); d.text("t-rel", 268, 354, "removed/2")
     d.edge("M740 480V500H860V330"); d.text("t-rel", 868, 420, "supervises")

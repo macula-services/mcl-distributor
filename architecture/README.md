@@ -26,12 +26,12 @@ change the script, run it, and look at the result before committing.
 
 One OTP release in one image, run under docker on a lab box that reconciles
 from the fleet repository. What `mcl_om` provides: the node identity key on a
-named volume, realm admission, a mesh pool, `Org/info`, and `/health` on the
-Unix socket `/run/mcl/health.sock` (the container healthcheck, never on the
-mesh). What the service adds: the org's removed set, a file on its own named
-volume at `/var/lib/mcl-distributor`. The node runs without an Erlang
-distribution listener (no cookie, no epmd, `-dist_listen false`), so nothing
-listens but the mesh pool's own sockets, and the VM writes no crash dump
+named volume, realm admission, a mesh pool, and `/health` on the Unix socket
+`/run/mcl/health.sock` (the container healthcheck, never on the mesh). What the
+service adds: the org's removed set, a file on its own named volume at
+`/var/lib/mcl-distributor`. The node runs without an Erlang distribution
+listener (no cookie, no epmd, `-dist_listen false`), so nothing listens but the
+mesh pool's own sockets, and the VM writes no crash dump
 (`ERL_CRASH_DUMP_SECONDS=0`): a dump copies process heaps, where epoch keys
 pass.
 
@@ -41,7 +41,7 @@ pass.
 
 | Component | What it does |
 |-----------|--------------|
-| `mcl_distributor_service` | The six `mcl_om_service` callbacks. One capability, `group_keys_v1`, with `macula_group_keys:advertise_opts/1` merged in: the org's `group_keys` grant and `confidential => required`. Omitted until `MCL_GROUP_ORG_KEY_ID` is known. |
+| `mcl_distributor_service` | The six `mcl_om_service` callbacks. `<org>/group_keys_v1` is the service's own procedure, and the only one; `mcl_om` adds `<org>/info` and `<org>/get_limits`, both open, and `capabilities/0` is the list. `macula_group_keys:advertise_opts/1` merges in the org's `group_keys` grant and `confidential => required`. Omitted until `MCL_GROUP_ORG_KEY_ID` is known. |
 | `mcl_distributor_pull` | The `macula_response` handler. Forwards each pull to the distributor registered as `mcl_distributor`; returns a refusal as the SDK names it, and `no_distributor` while the distributor is restarting. |
 | `mcl_distributor` | Reads the deploy config and starts `macula_group_keys` for the org: the mesh pool by its registered name (looked up at every membership read), the removed set, the realm pins. Every id from env is exactly 64 hex characters, or the boot stops. |
 | `macula_group_keys` | The SDK's distributor (macula >= 14.10). Refuses a removed node, then a node that is not a live realm member; keeps the epochs in a private ets table, the state naming the table but holding no key; redacts keys in `format_status/1`. |

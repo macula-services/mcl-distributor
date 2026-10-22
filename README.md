@@ -25,7 +25,7 @@
 
 Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls, and never touches the traffic itself.
 
-The group-key distributor for [Macula](https://github.com/macula-io/macula)'s sealed pubsub: a single-purpose service that advertises `<org>/group_keys_v1` and answers the sealed pulls every group member makes at join and at each epoch rotation. The design it implements is [`DESIGN_E2E_SEALED_PUBSUB.md`](https://github.com/macula-io/macula/blob/main/docs/design/DESIGN_E2E_SEALED_PUBSUB.md); the distributor itself is the SDK's `macula_group_keys`, started here with this service's deploy config.
+The group-key distributor for [Macula](https://github.com/macula-io/macula)'s sealed pubsub. `<org>/group_keys_v1` is the service's own procedure, and the only one; `mcl_om` adds `<org>/info` and `<org>/get_limits` to every service, both open, and `capabilities/0` is the list. It answers the sealed pulls every group member makes at join and at each epoch rotation. The design it implements is [`DESIGN_E2E_SEALED_PUBSUB.md`](https://github.com/macula-io/macula/blob/main/docs/design/DESIGN_E2E_SEALED_PUBSUB.md); the distributor itself is the SDK's `macula_group_keys`, started here with this service's deploy config.
 
 **What it is not:** it is not in the data path. Events flow publisher → stations → subscribers whether or not the distributor is up. Popped, members holding the current epoch go on publishing and opening; new joins and rotations fail closed until it returns.
 
@@ -53,4 +53,4 @@ The ids above are exactly 64 hex characters, or the service refuses to boot. Eve
 
 ## Trust and blast radius
 
-A distributor gets its power only through the org's delegation, and the damage a rogue one can do is capped at that org's groups for one epoch: it cannot claim another org's procedure (the D25 chain verifies against the realm key), cannot hand out keys in the clear, cannot forge publications, and cannot capture members already pinned to the honest distributor. Run it for your own org, keep delegations revocable, and the mesh isolates everyone else from it.
+A distributor gets its power only through the org's delegation, and the damage a rogue one can do is capped at that org's groups for the current epoch: it cannot claim another org's procedure (the D25 chain verifies against the realm key), cannot hand out keys in the clear, cannot forge publications, and cannot capture members already pinned to the honest distributor. Run it for your own org, keep delegations revocable, and the mesh isolates everyone else from it.

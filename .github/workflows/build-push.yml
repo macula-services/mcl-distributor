@@ -33,11 +33,10 @@ on:
       - 'assets/**'
   workflow_dispatch:
 
-# ONE IMAGE BUILD IN FLIGHT PER REF. Every push to main builds and pushes
-# :latest; without this, three quick commits run three builds that finish in
-# whatever order the runners please, and :latest ends up being whichever
-# finished LAST, not whichever was pushed last -- watchtower then rolls the
-# fleet onto an older commit and flaps. a sibling service hit exactly that live.
+# ONE IMAGE BUILD IN FLIGHT PER REF. A push to main publishes :main and :<sha>;
+# without this, three quick commits run three builds that finish in whatever
+# order the runners please, and the registry's :main ends up being whichever
+# finished LAST, not whichever was pushed last.
 concurrency:
   group: build-and-push-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
