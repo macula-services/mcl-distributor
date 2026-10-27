@@ -29,6 +29,18 @@ info_names_the_service_test() ->
     ?assert(is_binary(maps:get(version, Info))),
     ?assert(is_binary(maps:get(description, Info))).
 
+%% The version a service reports is the release it ships in. Three files
+%% carry it (app.src, rebar.config's release tuple, and info/0), and a bump
+%% that misses this one leaves a 0.4.0 box answering 0.3.0 in /health -- so
+%% the test reads the app's own vsn rather than a fourth copy of the
+%% number.
+info_reports_the_version_the_app_ships_test() ->
+    %% `application:load/1' answers `{error, {already_loaded, _}}' when the
+    %% suite already loaded it, which is fine either way.
+    _ = application:load(mcl_distributor),
+    {ok, Vsn} = application:get_key(mcl_distributor, vsn),
+    ?assertEqual(list_to_binary(Vsn), maps:get(version, mcl_distributor_service:info())).
+
 %% The link runs no gate on the pull (macula 17, macula#129): the group a
 %% pull names travels inside the sealed payload, where no gate sees it, so
 %% the handler is handed the call's token and decides. The sealed-only
