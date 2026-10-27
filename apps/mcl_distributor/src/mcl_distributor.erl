@@ -24,10 +24,10 @@
 %%% issues the provider grant, so on a first boot the id is UNKNOWN: no
 %%% distributor starts (`ignore', so its supervisor has no child), the
 %%% claim and /health carry the node through, and the first start after
-%%% MCL_GROUP_ORG_KEY_ID is filled serves the group. `/health' answers
-%%% 503 and names the wait (`degraded', `org_key_id_unknown') rather than
-%%% report a distributor that was never asked to run: the fleet sees a
-%%% node serving no group keys, and a restart is visibly not the answer.
+%%% MCL_GROUP_ORG_KEY_ID is filled serves the group. `/health' stays ok
+%%% through that wait -- a normal setup state must never fail a canary --
+%%% and the service logs one notice naming the variable rather than report
+%%% a distributor that was never asked to run.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(mcl_distributor).

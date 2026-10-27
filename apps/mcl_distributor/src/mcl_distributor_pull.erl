@@ -42,5 +42,8 @@ pulled(Distributor, Payload) -> (macula_group_keys:handler(Distributor))(Payload
 %% `no_distributor', hiding the reason it was refused.
 answered({error, Reason}, State) when is_atom(Reason); is_binary(Reason) ->
     {error, Reason, State};
-answered(Reply, State) ->
+%% A key reply is a map, and nothing else travels as one: a shape the SDK
+%% does not document fails the handler loudly here rather than reach the
+%% member as a malformed reply it would name `no_distributor'.
+answered(Reply, State) when is_map(Reply) ->
     {reply, Reply, State}.

@@ -14,6 +14,8 @@
 
 -export([info/0, start/1, stop/1, health/0, capabilities/0, identity_spec/0]).
 
+%% @doc The service's identity. The three keys are the whole of what
+%% mcl_om_service:info() types, so the org-key wait cannot ride here.
 info() ->
     #{name => <<"mcl-distributor">>,
       version => <<"0.3.0">>,
@@ -24,7 +26,20 @@ info() ->
 %% or realm pin is refused loudly at boot, never discovered by callers.
 start(_Opts) ->
     _ = mcl_distributor:options(),
+    naming_the_wait(mcl_distributor:org_key_id()),
     mcl_distributor_sup:start_link().
+
+%% The org-key wait is a normal setup state (health answers ok for it), so
+%% it must still be findable: one notice at boot, and the `group_keys_v1'
+%% capability absent from everything the service advertises until it is
+%% filled.
+naming_the_wait(undefined) ->
+    logger:notice("mcl_distributor: serving no group keys yet -- MCL_GROUP_ORG_KEY_ID is unset, "
+                  "so no distributor starts and group_keys_v1 is not advertised. The realm mints "
+                  "the org key when it issues the provider grant: set the id from the published "
+                  "org_directory and restart.");
+naming_the_wait(_OrgKeyId) ->
+    ok.
 
 stop(_State) -> ok.
 
@@ -32,18 +47,20 @@ stop(_State) -> ok.
 %% mesh, the claim and the advertise liveness are mcl_om's own checks,
 %% combined into /health by mcl_om_health.
 %%
-%% A distributor that was never started is the realm still owing the org
-%% key, not a process that failed: it answers `degraded' and names the
-%% wait, so /health is 503 and the fleet sees a node that serves no group
-%% keys, while a restart is visibly not the answer. With the org key id
-%% known, a missing distributor is a genuine `down'.
+%% A distributor that was never started because the realm still owes the
+%% org key is a NORMAL SETUP STATE, not a fault: mcl_om's contract has a
+%% service waiting on setup answer ok and name what is missing, and a
+%% fresh realm's first boot must never fail a canary. So the wait answers
+%% ok; the boot notice (below) and the absent `group_keys_v1' in the
+%% advertisement are how an operator finds it. With the org key id known,
+%% a missing distributor is a genuine `down'.
 health() ->
     case whereis(mcl_distributor) of
         undefined -> not_running(mcl_distributor:org_key_id());
         _Pid      -> ok
     end.
 
-not_running(undefined) -> {degraded, #{org_key_id => unknown}};
+not_running(undefined) -> ok;
 not_running(_OrgKeyId) -> {down, distributor_not_running}.
 
 %% WHAT THIS SERVICE ANNOUNCES IT CAN DO. One capability: the org's
