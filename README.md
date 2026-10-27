@@ -31,7 +31,7 @@ The group-key distributor for [Macula](https://github.com/macula-io/macula)'s se
 
 **What it holds:** each group's epoch keys, in memory only, rotated every `MCL_GROUP_ROTATE_MS` (default 15 minutes). Keys never travel readable by a station: the pull is a sealed call (`confidential => required`), refused in the clear by the link before the handler runs.
 
-**What it decides:** membership, per pull: first the org's removed set, then the realm slot (`MCL_REALM` + `MCL_GROUP_REALM_KEY_ID`), with the org's `group_keys` UCAN checked by the link before either (the procedure's `auth` policy). The removed set is a file on the service's own volume, `removed_members`, one node id (64 hex characters) per line, read at every pull: a member whose id is there is refused every epoch from its next pull, and the set survives a restart. A set that cannot be read, or holds a malformed line, refuses every caller.
+**What it decides:** the call's authority, then membership, per pull. The procedure is advertised `auth => handler_authorizes` (macula 17, macula#129), so the link runs no gate and hands the handler the token the caller signed and its proofs: the handler admits the pull only when that chain ends at the org key, before it looks at anything else. Then the org's removed set, then the realm slot (`MCL_REALM` + `MCL_GROUP_REALM_KEY_ID`). A member the realm has withdrawn is refused there though its chain still verifies, and a pull without the org's grant is refused `not_authorized: group_keys on mri:proc:<org>/group_keys_v1`. The removed set is a file on the service's own volume, `removed_members`, one node id (64 hex characters) per line, read at every pull: a member whose id is there is refused every epoch from its next pull, and the set survives a restart. A set that cannot be read, or holds a malformed line, refuses every caller.
 
 **What it shows:** no epoch key in its process state, its status or a crash report (macula 14.10), and the VM writes no crash dump. It runs without an Erlang distribution listener: no cookie, no epmd, `-dist_listen false`, so nothing accepts a node connection and no remote shell or dist-eval reaches the keys. The release's `remote_console` and `eval` do not work against it, by design.
 
@@ -42,7 +42,7 @@ The architecture (C4 context, containers, components) is in [architecture/README
 | Env | Meaning |
 |---|---|
 | `MCL_GROUP_ORG` | The org whose groups this service distributes; also the procedure's namespace (`<org>/group_keys_v1`) |
-| `MCL_GROUP_ORG_KEY_ID` | The org's PUBLIC key id (hex), the `realm_member_required` policy matches the caller's UCAN issuer against |
+| `MCL_GROUP_ORG_KEY_ID` | The org's PUBLIC key id (hex), which the handler admits a pull's chain against. The distributor cannot start without it: on a fresh realm the realm mints the org key only when it issues the provider grant, so a first boot runs without one, `/health` reports `org_key_id_unknown`, and this is filled from the published `org_directory` before the first start that serves the group |
 | `MCL_GROUP_REALM_KEY_ID` | The realm key id (hex) the membership check pins the realm slot to |
 | `MCL_GROUP_POLICY` | `required` (default), `preferred`, or `off` |
 | `MCL_GROUP_ROTATE_MS` | Epoch rotation interval, default 900000 |

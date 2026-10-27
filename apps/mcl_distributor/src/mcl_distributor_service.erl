@@ -30,11 +30,20 @@ stop(_State) -> ok.
 
 %% @doc The service's own health: the distributor process answers. The
 %% mesh, the claim and the advertise liveness are mcl_om's own checks,
-%% combined into /health by mcl_om_health.
+%% combined into /health by mcl_om_health. A distributor that was never
+%% started is named as the wait it is: the org key id is not known yet,
+%% so there is nothing to check a pull against and the realm still owes
+%% the org key.
 health() ->
     case whereis(mcl_distributor) of
-        undefined -> {down, distributor_not_running};
+        undefined -> {down, not_running()};
         _Pid      -> ok
+    end.
+
+not_running() ->
+    case mcl_distributor:org_key_id() of
+        undefined -> org_key_id_unknown;
+        _OrgKeyId -> distributor_not_running
     end.
 
 %% WHAT THIS SERVICE ANNOUNCES IT CAN DO. One capability: the org's
@@ -47,19 +56,22 @@ health() ->
 %% MCL_GROUP_ORG_KEY_ID is filled (from the published org_directory)
 %% registers this one.
 %%
-%% The SDK's advertise_opts/1 supplies `auth', which gates the procedure
-%% on the org's `group_keys' UCAN, checked by the link before the handler
-%% runs, and `confidential => required', which makes the link refuse a
-%% clear pull, so a key never travels readable by a station.
+%% The SDK's advertise_opts/0 supplies `auth => handler_authorizes', which
+%% runs no gate at the link and hands the handler the call's token and
+%% proofs, and `confidential => required', which makes the link refuse a
+%% clear pull, so a key never travels readable by a station. The gate
+%% cannot make this check any more: the group a pull names travels inside
+%% the sealed payload, where no gate sees it (macula#129), so the handler
+%% decides (mcl_distributor_pull).
 capabilities() ->
     case mcl_distributor:org_key_id() of
         undefined ->
             [];
-        OrgKeyId ->
+        _OrgKeyId ->
             [maps:merge(#{name => <<"group_keys_v1">>,
                           version => 1,
                           handler => {mcl_distributor_pull, []}},
-                        macula_group_keys:advertise_opts(OrgKeyId))]
+                        macula_group_keys:advertise_opts())]
     end.
 
 %% THE AUTHORITY THIS SERVICE ASKS THE REALM FOR, and deliberately nothing

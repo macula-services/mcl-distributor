@@ -13,7 +13,11 @@
 
 -define(ORG, <<"acme">>).
 -define(ORG_KEY_ID_HEX, "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff").
+-define(REALM_NAME, <<"io.macula">>).
 -define(PREFIX, <<"io.macula/acme/chat">>).
+%% The suite's own keys are minted in the pure profile: no RSA half to
+%% generate, and the checks are the same ones the hybrid profile makes.
+-define(PROFILE, pq_pure).
 
 %%------------------------------------------------------------------
 %% The six callbacks have the contract's shape
@@ -25,6 +29,10 @@ info_names_the_service_test() ->
     ?assert(is_binary(maps:get(version, Info))),
     ?assert(is_binary(maps:get(description, Info))).
 
+%% The link runs no gate on the pull (macula 17, macula#129): the group a
+%% pull names travels inside the sealed payload, where no gate sees it, so
+%% the handler is handed the call's token and decides. The sealed-only
+%% channel stays the link's to enforce.
 capabilities_are_the_one_group_keys_v1_test() ->
     {ok, Env} = save_env(),
     try
@@ -32,9 +40,8 @@ capabilities_are_the_one_group_keys_v1_test() ->
         [Cap] = mcl_distributor_service:capabilities(),
         ?assertEqual(<<"group_keys_v1">>, maps:get(name, Cap)),
         ?assertEqual({mcl_distributor_pull, []}, maps:get(handler, Cap)),
-        ?assertEqual(required, maps:get(confidential, Cap)),
-        {realm_member_required, OrgKeyId, <<"group_keys">>} = maps:get(auth, Cap),
-        ?assertEqual(32, byte_size(OrgKeyId))
+        ?assertEqual(handler_authorizes, maps:get(auth, Cap)),
+        ?assertEqual(required, maps:get(confidential, Cap))
     after
         restore_env(Env)
     end.
@@ -87,38 +94,72 @@ options_accept_the_deploy_shape_test() ->
         restore_env(Env)
     end.
 
+%% The SDK refuses to start without it (macula 17), so options/0 carries
+%% the org key id: the one the operator read from the published
+%% org_directory, and `undefined' while the realm still owes the org key.
+options_carry_the_org_key_id_the_sdk_requires_test() ->
+    with_deploy_env(fun() ->
+        ?assertEqual(mcl_distributor:org_key_id(), maps:get(org_key_id, mcl_distributor:options())),
+        ?assertEqual(32, byte_size(maps:get(org_key_id, mcl_distributor:options())))
+    end),
+    with_deploy_env(fun() ->
+        true = os:unsetenv("MCL_GROUP_ORG_KEY_ID"),
+        ?assertEqual(undefined, maps:get(org_key_id, mcl_distributor:options()))
+    end).
+
+%% The membership answer a withdrawal rides on is the realm's own: the
+%% distributor supplies the pool, the realm and its key id and leaves the
+%% read to the SDK, so no pull is ever decided on its token alone.
+options_leave_membership_to_the_realms_slot_test() ->
+    with_deploy_env(fun() ->
+        Opts = mcl_distributor:options(),
+        ?assertEqual(mcl_om_mesh_pool, maps:get(pool, Opts)),
+        ?assertEqual(32, byte_size(maps:get(realm, Opts))),
+        ?assertEqual(32, byte_size(maps:get(realm_key_id, Opts))),
+        ?assertNot(maps:is_key(membership, Opts))
+    end).
+
+%% A first boot on a fresh realm: the org key does not exist yet, so there
+%% is nothing for a pull to be checked against and no distributor starts.
+%% The claim and /health carry the node until the id is filled, and the
+%% first start after that serves the group.
+start_link_starts_nothing_until_the_org_key_id_is_known_test() ->
+    with_deploy_env(fun() ->
+        true = os:unsetenv("MCL_GROUP_ORG_KEY_ID"),
+        ?assertEqual(ignore, mcl_distributor:start_link())
+    end).
+
 %%------------------------------------------------------------------
 %% The pull handler reaches a live distributor, and health sees it
 %%------------------------------------------------------------------
 
 pull_forwards_to_the_registered_distributor_test() ->
-    Now = counters:new(1, []),
-    counters:put(Now, 1, 1_000_000),
-    {ok, Pid} = macula_group_keys:start_link(
-                  #{org => ?ORG, policy => required, rotate_after_ms => 15 * 60000,
-                    now => fun() -> counters:get(Now, 1) end,
-                    membership => fun(_Caller) -> ok end,
-                    removed => fun(_Caller) -> false end}),
-    true = register(mcl_distributor, Pid),
-    try
+    with_org_distributor(#{}, fun(Pull) ->
         ?assertEqual(ok, mcl_distributor_service:health()),
-        Payload = #{{text, <<"prefix">>} => {text, ?PREFIX},
-                    {text, <<"epoch">>} => {text, <<"current">>},
-                    caller => crypto:strong_rand_bytes(32)},
         {ok, _} = mcl_distributor_pull:init([]),
-        {reply, Reply, _} = mcl_distributor_pull:handle_request(Payload, undefined),
+        {reply, Reply, _} = pull(?PREFIX, Pull),
         ?assertMatch(#{prefix := {text, ?PREFIX}, policy := {text, <<"required">>}, epochs := [_]}, Reply)
-    after
-        unregister(mcl_distributor),
-        gen_server:stop(Pid)
-    end.
+    end).
 
 health_is_down_without_a_distributor_test() ->
     {ok, Env} = save_env(),
     try
-        true = os:unsetenv("MCL_GROUP_ORG"),
+        true = os:putenv("MCL_GROUP_ORG_KEY_ID", ?ORG_KEY_ID_HEX),
         catch unregister(mcl_distributor),
         ?assertEqual({down, distributor_not_running}, mcl_distributor_service:health())
+    after
+        restore_env(Env)
+    end.
+
+%% No distributor was ever asked to run: the realm still owes the org key,
+%% and the SDK cannot check a pull without it (macula 17). Health names the
+%% wait rather than a process that failed.
+health_names_the_org_key_id_it_waits_for_test() ->
+    {ok, Env} = save_env(),
+    try
+        true = os:unsetenv("MCL_GROUP_ORG_KEY_ID"),
+        catch unregister(mcl_distributor),
+        ?assertEqual({down, org_key_id_unknown}, mcl_distributor_service:health())
     after
         restore_env(Env)
     end.
@@ -127,22 +168,42 @@ health_is_down_without_a_distributor_test() ->
 %% The handler's refusals reach the member as the SDK names them
 %%------------------------------------------------------------------
 
+%% A member whose node the org has put in its removed set is refused
+%% though its chain verifies: the org's own list is asked before membership.
 a_removed_member_is_refused_through_the_handler_test() ->
-    Removed = crypto:strong_rand_bytes(32),
-    with_distributor(#{removed => fun(Caller) -> Caller =:= Removed end},
-                     fun() ->
-                         ?assertMatch({error, not_a_member, _}, pull(?PREFIX, Removed)),
-                         ?assertMatch({reply, #{epochs := [_]}, _}, pull(?PREFIX, crypto:strong_rand_bytes(32)))
-                     end).
+    with_org_distributor(#{removed => fun(_Caller) -> true end}, fun(Pull) ->
+        ?assertMatch({error, not_a_member, _}, pull(?PREFIX, Pull))
+    end).
+
+%% A member the realm has withdrawn: its token chain still verifies, and
+%% the pull is refused anyway. The handler asks the realm's slot for the
+%% caller after it checks the token, and there is no gate at the link to
+%% end it (macula 17 runs none, macula#129), so this check is the one that
+%% holds -- Uranus's observation, folded into mcl-distributor#5.
+a_withdrawn_member_is_refused_though_its_chain_verifies_test() ->
+    with_org_distributor(#{membership => fun(_Caller) -> {error, not_a_member} end}, fun(Pull) ->
+        ?assertMatch({error, not_a_member, _}, pull(?PREFIX, Pull))
+    end).
+
+%% Without the org's grant the SDK refuses with its own text, and the pull
+%% handler must carry it as an ERROR: answered as a reply, the member would
+%% read it as a malformed key reply and name it `no_distributor', losing
+%% the one reason that tells it to go and get a grant.
+a_pull_without_the_orgs_grant_is_refused_not_authorized_test() ->
+    with_org_distributor(#{}, fun(#{caller := Caller}) ->
+        ?assertMatch({error, <<"not_authorized: group_keys on ", _/binary>>, _},
+                     pull(?PREFIX, #{caller => Caller}))
+    end).
 
 another_orgs_group_is_refused_through_the_handler_test() ->
-    with_distributor(#{}, fun() ->
-        ?assertMatch({error, unknown_group, _}, pull(<<"io.macula/contoso/chat">>, crypto:strong_rand_bytes(32)))
+    with_org_distributor(#{}, fun(Pull) ->
+        ?assertMatch({error, unknown_group, _}, pull(<<"io.macula/contoso/chat">>, Pull))
     end).
 
 a_pull_while_the_distributor_is_away_is_no_distributor_test() ->
     catch unregister(mcl_distributor),
-    ?assertMatch({error, no_distributor, _}, pull(?PREFIX, crypto:strong_rand_bytes(32))).
+    ?assertMatch({error, no_distributor, _},
+                 pull(?PREFIX, #{caller => crypto:strong_rand_bytes(32)})).
 
 %%------------------------------------------------------------------
 %% The removed set: a file on the volume, read at every pull
@@ -237,22 +298,98 @@ no_module_uses_distributed_erlang_test() ->
 %% Helpers
 %%------------------------------------------------------------------
 
-%% A distributor registered as the handler finds it, with `Opts' over the defaults, for the length of `Test'.
-with_distributor(Opts, Test) ->
-    {ok, Pid} = macula_group_keys:start_link(
-                  maps:merge(#{org => ?ORG, policy => required, membership => fun(_Caller) -> ok end}, Opts)),
+%% A distributor over a realm and an org key of the test's own making, and
+%% one member holding the org's `group_keys' grant -- the chain an admitted
+%% member presents, which the SDK verifies before it asks anything else.
+%% `Opts' overrides the standing the test wants that member to have.
+with_org_distributor(Opts, Test) ->
+    OrgKey = org_key(),
+    Member = member(),
+    Pull = #{caller => Member, token => org_grant(OrgKey, Member)},
+    {ok, Pid} = macula_group_keys:start_link(maps:merge(org_options(OrgKey), Opts)),
     true = register(mcl_distributor, Pid),
-    try Test() after unregister(mcl_distributor), gen_server:stop(Pid) end.
+    try Test(Pull) after unregister(mcl_distributor), gen_server:stop(Pid) end.
 
-pull(Prefix, Caller) ->
-    mcl_distributor_pull:handle_request(#{{text, <<"prefix">>} => {text, Prefix},
-                                          {text, <<"epoch">>} => {text, <<"current">>},
-                                          caller => Caller}, undefined).
+%% The org key the realm would have minted: its PUBLIC id is what the
+%% distributor is told to admit chains against, and its private part signs
+%% the member's grant here, exactly as the realm signs it.
+org_key() ->
+    {ok, OrgKey} = macula_node_keys:generate(org, ?PROFILE),
+    OrgKey.
+
+%% A member's node id: the audience of its grant, and the caller the link
+%% reports for it.
+member() ->
+    {ok, Key} = macula_node_keys:generate(identity, ?PROFILE),
+    {ok, NodeId} = macula_node_keys:node_id(Key),
+    NodeId.
+
+%% The org's `group_keys' grant to that member, on the procedure the
+%% distributor serves in this realm.
+org_grant(OrgKey, Member) ->
+    macula_ucan:create(OrgKey, Member,
+                       [#{with => <<"mri:proc:", ?REALM_NAME/binary, "/acme/group_keys_v1">>,
+                          can => <<"group_keys">>}],
+                       #{exp => erlang:system_time(second) + 3600}).
+
+%% The distributor's options over that key: what options/0 builds from
+%% deploy env, with a membership answer the test chooses.
+org_options(OrgKey) ->
+    #{org => ?ORG, policy => required, rotate_after_ms => 15 * 60000,
+      org_key_id => macula_node_keys:key_id(OrgKey),
+      realm => macula_realm:id(?REALM_NAME), profile => ?PROFILE,
+      membership => fun(_Caller) -> ok end,
+      removed => fun(_Caller) -> false end}.
+
+pull(Prefix, #{caller := Caller, token := Token}) ->
+    mcl_distributor_pull:handle_request(payload(Prefix, Caller, Token), undefined);
+pull(Prefix, #{caller := Caller}) ->
+    mcl_distributor_pull:handle_request(payload(Prefix, Caller), undefined).
+
+%% What the link hands the handler: the pull, the wire-verified caller, and
+%% the token and proofs the caller signed into the request.
+payload(Prefix, Caller, Token) ->
+    (payload(Prefix, Caller))#{ucan_token => Token, proofs => []}.
+
+payload(Prefix, Caller) ->
+    #{{text, <<"prefix">>} => {text, Prefix},
+      {text, <<"epoch">>} => {text, <<"current">>},
+      caller => Caller}.
 
 scratch(Name) ->
     Dir = filename:join(["_build", "test", "mcl_distributor_tests", integer_to_list(erlang:unique_integer([positive]))]),
     ok = filelib:ensure_path(Dir),
     filename:join(Dir, Name).
+
+%% A box's deploy env for the length of `Fun': the org and realm pins, a
+%% removed set on a scratch file, a pool holding the name the SDK looks up
+%% at every membership read, and the node's crypto profile.
+with_deploy_env(Fun) ->
+    {ok, Env} = save_env(),
+    Profile = application:get_env(macula, crypto_profile),
+    ok = application:set_env(macula, crypto_profile, ?PROFILE),
+    true = os:putenv("MCL_GROUP_ORG", "acme"),
+    true = os:putenv("MCL_GROUP_ORG_KEY_ID", ?ORG_KEY_ID_HEX),
+    true = os:putenv("MCL_GROUP_REALM_KEY_ID", ?ORG_KEY_ID_HEX),
+    true = os:putenv("MCL_REALM", ?ORG_KEY_ID_HEX),
+    true = os:putenv("MCL_GROUP_REMOVED_FILE", scratch("removed_members")),
+    Pool = fake_pool(),
+    try Fun() after restore_env(Env), restore_profile(Profile), stop_fake_pool(Pool) end.
+
+restore_profile(undefined) -> ok = application:unset_env(macula, crypto_profile);
+restore_profile(Profile) -> ok = application:set_env(macula, crypto_profile, Profile).
+
+%% Nothing reads through this pool here: the name is all the SDK's default
+%% membership path needs to find one.
+fake_pool() ->
+    Pid = spawn(fun() -> receive stop -> ok end end),
+    true = register(mcl_om_mesh_pool, Pid),
+    Pid.
+
+stop_fake_pool(Pid) ->
+    true = unregister(mcl_om_mesh_pool),
+    Pid ! stop,
+    ok.
 
 %%------------------------------------------------------------------
 %% Env save/restore, so one suite never leaks into another

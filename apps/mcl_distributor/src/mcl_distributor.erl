@@ -16,6 +16,17 @@
 %%% a pool mcl_om's supervisor restarts is found again. Before membership,
 %%% the org's removed set (mcl_distributor_removed_members) refuses every
 %%% node the org has removed.
+%%%
+%%% THE ORG KEY ID IS REQUIRED TO START (macula 17, macula#129). The
+%%% distributor checks each pull's token itself, and an org-grant group
+%%% admits a chain that ends at the org's public key, so the SDK needs
+%%% `org_key_id' at `start_link'. The realm mints that key only when it
+%%% issues the provider grant, so on a first boot the id is UNKNOWN: no
+%%% distributor starts (`ignore', so its supervisor has no child), the
+%%% claim and /health carry the node through, and the first start after
+%%% MCL_GROUP_ORG_KEY_ID is filled serves the group. `/health' names the
+%%% wait (`org_key_id_unknown') rather than report a distributor that was
+%%% never asked to run.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(mcl_distributor).
@@ -29,10 +40,17 @@
 
 %% @doc Start the distributor and register it by name. The name is what
 %% the pull handler forwards to; a supervisor restart re-registers it
-%% (a dead process frees its name).
--spec start_link() -> {ok, pid()} | {error, term()}.
+%% (a dead process frees its name). Without the org key id there is
+%% nothing to check a pull against, so no distributor starts: `ignore'
+%% leaves the supervisor with no child until the id is known.
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
-    started(macula_group_keys:start_link(options())).
+    starting(options()).
+
+starting(#{org_key_id := undefined}) ->
+    ignore;
+starting(Opts) ->
+    started(macula_group_keys:start_link(Opts)).
 
 started({ok, Pid}) ->
     %% register/2 returns `true' or raises badarg (name taken, or the pid
@@ -42,16 +60,27 @@ started({ok, Pid}) ->
 started(Error) ->
     Error.
 
+%% The SDK's options while the org key id is known, and the same map with
+%% it still `undefined' before the realm mints the org key (macula 17).
+-type options() :: macula_group_keys:options()
+                 | #{org := binary(), policy := macula_group_keys:policy(),
+                     org_key_id := undefined, _ => _}.
+
 %% @doc The distributor's options, from deploy env. Everything here is
 %% public material except nothing: no key leaves the secrets volume.
 %% The policy's `org_key_id' names the org's PUBLIC key (the
-%% org_directory's org_key), which the realm_member_required check
-%% matches the caller's UCAN issuer against.
--spec options() -> macula_group_keys:options().
+%% org_directory's org_key), which the SDK's org-grant check matches the
+%% caller's UCAN chain against. It is `undefined' until the realm mints
+%% the org key, and the SDK refuses to start without it, so
+%% `start_link/0' starts nothing then; everything else here is checked
+%% either way, so a bad deploy fails at boot rather than at the first
+%% pull.
+-spec options() -> options().
 options() ->
     RemovedFile = removed_set_checked(removed_file()),
     #{org => org(),
       policy => policy(),
+      org_key_id => org_key_id(),
       rotate_after_ms => rotate_after_ms(),
       pool => pool(),
       removed => fun(Caller) -> mcl_distributor_removed_members:removed(RemovedFile, Caller) end,
@@ -94,10 +123,10 @@ policy() ->
 %% org key and published its org_directory. The realm generates the org key
 %% lazily when it issues the provider grant, so this is UNKNOWN at first
 %% boot: the claim lands first, the operator admits the node, and the key id
-%% comes back from the published org_directory. The capability's
-%% realm_member_required policy needs it, so capabilities() omits
-%% group_keys_v1 while it is unset -- the claim and the other capabilities
-%% still work, and a restart after the env is filled registers the full set.
+%% comes back from the published org_directory. The SDK's org-grant check
+%% needs it to start at all, so no distributor runs while it is unset and
+%% capabilities() omits group_keys_v1 -- the claim and /health still work,
+%% and the first start after the env is filled serves the group.
 -spec org_key_id() -> <<_:256>> | undefined.
 org_key_id() ->
     case os:getenv("MCL_GROUP_ORG_KEY_ID") of
