@@ -22,7 +22,7 @@
 %% (mcl_om 1.5.0 widens info() for exactly this; mcl-distributor#5).
 info() ->
     #{name => <<"mcl-distributor">>,
-      version => <<"0.4.0">>,
+      version => <<"0.5.0">>,
       description => <<"Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls">>,
       org_key_id => org_key_state()}.
 

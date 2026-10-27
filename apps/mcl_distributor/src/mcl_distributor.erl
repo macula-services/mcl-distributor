@@ -33,7 +33,7 @@
 -module(mcl_distributor).
 
 -export([start_link/0, options/0, org/0, policy/0, org_key_id/0, realm/0, realm_key_id/0, removed_file/0,
-         node_id/1]).
+         restricted_groups/0, restricted_issuer_key_id/0, node_id/1]).
 
 -define(POOL, mcl_om_mesh_pool).
 -define(DEFAULT_ROTATE_MS, 15 * 60000).
@@ -87,6 +87,7 @@ options() ->
       removed => fun(Caller) -> mcl_distributor_removed_members:removed(RemovedFile, Caller) end,
       realm => realm(),
       realm_key_id => realm_key_id(),
+      groups => restricted_groups(),
       profile => profile()}.
 
 %% @doc The removed set's file, on the persistent volume:
@@ -134,6 +135,49 @@ org_key_id() ->
         false -> undefined;
         ""    -> undefined;
         Hex   -> hex_32("MCL_GROUP_ORG_KEY_ID", list_to_binary(Hex))
+    end.
+
+%% @doc The restricted groups, from `MCL_GROUP_RESTRICTED': a comma-separated
+%% list of `<prefix>=<mode>', the mode `refusing' or `counting' and never
+%% left out, so a group is never fail-open by omission. Each one admits a
+%% pull on the `pubsub/subscribe' grant of `restricted_issuer_key_id/0'
+%% covering the whole group (macula#129); a group not listed keeps the
+%% org's grant. Unset or empty lists none. A malformed entry or a prefix
+%% listed twice stops the boot; a prefix the org does not own, or a
+%% restricted group under a seal policy other than `required', is refused
+%% by the SDK when the distributor starts.
+-spec restricted_groups() -> #{binary() => {realm_capability, <<_:256>>, counting | refusing}}.
+restricted_groups() ->
+    restricted(string:lexemes(os:getenv("MCL_GROUP_RESTRICTED", ""), ","), #{}).
+
+restricted([], Groups) ->
+    Groups;
+restricted([Entry | Rest], Groups) ->
+    restricted(Rest, listed_once(restricted_entry([string:trim(Part) || Part <- string:split(Entry, "=")]), Entry, Groups)).
+
+restricted_entry([Prefix, "refusing"]) when Prefix =/= "" -> {list_to_binary(Prefix), refusing};
+restricted_entry([Prefix, "counting"]) when Prefix =/= "" -> {list_to_binary(Prefix), counting};
+restricted_entry(_Malformed) -> malformed.
+
+listed_once(malformed, Entry, _Groups) ->
+    error({mcl_distributor, {not_a_restricted_group, Entry}});
+listed_once({Prefix, _Mode}, _Entry, Groups) when is_map_key(Prefix, Groups) ->
+    error({mcl_distributor, {restricted_group_listed_twice, Prefix}});
+listed_once({Prefix, Mode}, _Entry, Groups) ->
+    Groups#{Prefix => {realm_capability, restricted_issuer_key_id(), Mode}}.
+
+%% @doc The key whose `pubsub/subscribe' grants admit a restricted group's
+%% pull: `MCL_GROUP_RESTRICTED_ISSUER_KEY_ID', or the realm key
+%% (`MCL_GROUP_REALM_KEY_ID') when unset, which is the production shape.
+%% A lab box may name another issuer to measure the refusal before the
+%% realm mints topic roles (macula-realm#98); the membership check stays
+%% pinned to the realm key either way.
+-spec restricted_issuer_key_id() -> <<_:256>>.
+restricted_issuer_key_id() ->
+    case os:getenv("MCL_GROUP_RESTRICTED_ISSUER_KEY_ID") of
+        false -> realm_key_id();
+        ""    -> realm_key_id();
+        Hex   -> hex_32("MCL_GROUP_RESTRICTED_ISSUER_KEY_ID", list_to_binary(Hex))
     end.
 
 rotate_after_ms() ->

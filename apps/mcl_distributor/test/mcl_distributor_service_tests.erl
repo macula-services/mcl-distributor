@@ -15,6 +15,8 @@
 -define(ORG_KEY_ID_HEX, "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff").
 -define(REALM_NAME, <<"io.macula">>).
 -define(PREFIX, <<"io.macula/acme/chat">>).
+-define(RESTRICTED, <<"io.macula/acme/orders">>).
+-define(ISSUER_KEY_ID_HEX, "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100").
 %% The suite's own keys are minted in the pure profile: no RSA half to
 %% generate, and the checks are the same ones the hybrid profile makes.
 -define(PROFILE, pq_pure).
@@ -239,6 +241,87 @@ a_pull_while_the_distributor_is_away_is_no_distributor_test() ->
                  pull(?PREFIX, #{caller => crypto:strong_rand_bytes(32)})).
 
 %%------------------------------------------------------------------
+%% Restricted groups: MCL_GROUP_RESTRICTED, read at boot
+%%------------------------------------------------------------------
+
+%% Nothing listed is today's shape: every group keeps the org's grant.
+options_list_no_restricted_group_by_default_test() ->
+    with_deploy_env(fun() ->
+        true = os:unsetenv("MCL_GROUP_RESTRICTED"),
+        ?assertEqual(#{}, maps:get(groups, mcl_distributor:options())),
+        true = os:putenv("MCL_GROUP_RESTRICTED", ""),
+        ?assertEqual(#{}, maps:get(groups, mcl_distributor:options()))
+    end).
+
+%% Each entry names its mode, and the issuer is the realm key unless the
+%% box names another.
+options_carry_each_restricted_group_with_its_mode_test() ->
+    with_deploy_env(fun() ->
+        true = os:putenv("MCL_GROUP_RESTRICTED", "io.macula/acme/orders=refusing, io.macula/acme/audit = counting"),
+        RealmKeyId = mcl_distributor:realm_key_id(),
+        ?assertEqual(#{<<"io.macula/acme/orders">> => {realm_capability, RealmKeyId, refusing},
+                       <<"io.macula/acme/audit">> => {realm_capability, RealmKeyId, counting}},
+                     maps:get(groups, mcl_distributor:options()))
+    end).
+
+%% A lab box measures the refusal before the realm mints topic roles: its
+%% issuer is its own, and membership stays pinned to the realm key.
+a_named_issuer_admits_restricted_groups_in_place_of_the_realm_key_test() ->
+    with_deploy_env(fun() ->
+        true = os:putenv("MCL_GROUP_RESTRICTED", "io.macula/acme/orders=refusing"),
+        true = os:putenv("MCL_GROUP_RESTRICTED_ISSUER_KEY_ID", ?ISSUER_KEY_ID_HEX),
+        Opts = mcl_distributor:options(),
+        Issuer = binary:decode_hex(list_to_binary(?ISSUER_KEY_ID_HEX)),
+        ?assertEqual(#{?RESTRICTED => {realm_capability, Issuer, refusing}}, maps:get(groups, Opts)),
+        ?assertEqual(mcl_distributor:realm_key_id(), maps:get(realm_key_id, Opts))
+    end).
+
+%% A mode left out would mean the SDK's fail-open counting by omission; a
+%% typo would mean a group nobody restricted. Both stop the boot, by name.
+a_malformed_restricted_entry_stops_the_boot_test_() ->
+    [?_test(with_deploy_env(fun() ->
+         true = os:putenv("MCL_GROUP_RESTRICTED", Bad),
+         ?assertError({mcl_distributor, {not_a_restricted_group, _}}, mcl_distributor:options())
+     end)) || Bad <- ["io.macula/acme/orders", "io.macula/acme/orders=", "io.macula/acme/orders=refuse",
+                      "=refusing", "io.macula/acme/orders=refusing=counting"]].
+
+a_restricted_group_listed_twice_stops_the_boot_test() ->
+    with_deploy_env(fun() ->
+        true = os:putenv("MCL_GROUP_RESTRICTED", "io.macula/acme/orders=refusing,io.macula/acme/orders=counting"),
+        ?assertError({mcl_distributor, {restricted_group_listed_twice, ?RESTRICTED}}, mcl_distributor:options())
+    end).
+
+a_short_issuer_key_id_stops_the_boot_test() ->
+    with_deploy_env(fun() ->
+        true = os:putenv("MCL_GROUP_RESTRICTED", "io.macula/acme/orders=refusing"),
+        true = os:putenv("MCL_GROUP_RESTRICTED_ISSUER_KEY_ID", lists:duplicate(63, $a)),
+        ?assertError({mcl_distributor, {not_64_hex, "MCL_GROUP_RESTRICTED_ISSUER_KEY_ID"}}, mcl_distributor:options())
+    end).
+
+%% A restricted group's events must never travel clear: under any seal
+%% policy but `required' the distributor does not start (the SDK's check).
+a_restricted_group_under_preferred_does_not_start_test() ->
+    with_deploy_env(fun() ->
+        true = os:putenv("MCL_GROUP_POLICY", "preferred"),
+        true = os:putenv("MCL_GROUP_RESTRICTED", "io.macula/acme/orders=refusing"),
+        ?assertEqual({error, {restricted_group_not_required, ?RESTRICTED}}, mcl_distributor:start_link())
+    end).
+
+%% Through the handler, refusing mode: the org's grant alone is refused,
+%% naming what it lacked; the issuer's pubsub/subscribe on the whole group
+%% is served; an unlisted group still answers to the org's grant.
+a_refusing_group_admits_the_issuers_subscribe_grant_alone_test() ->
+    {ok, Issuer} = macula_node_keys:generate(realm, ?PROFILE),
+    Groups = #{?RESTRICTED => {realm_capability, macula_node_keys:key_id(Issuer), refusing}},
+    with_org_distributor(#{groups => Groups}, fun(#{caller := Caller} = OrgPull) ->
+        ?assertMatch({error, <<"not_authorized: pubsub/subscribe on mri:topic:io.macula/acme/orders">>, _},
+                     pull(?RESTRICTED, OrgPull)),
+        ?assertMatch({reply, #{prefix := {text, ?RESTRICTED}}, _},
+                     pull(?RESTRICTED, #{caller => Caller, token => subscribe_grant(Issuer, Caller)})),
+        ?assertMatch({reply, #{prefix := {text, ?PREFIX}}, _}, pull(?PREFIX, OrgPull))
+    end).
+
+%%------------------------------------------------------------------
 %% The removed set: a file on the volume, read at every pull
 %%------------------------------------------------------------------
 
@@ -365,6 +448,14 @@ org_grant(OrgKey, Member) ->
                           can => <<"group_keys">>}],
                        #{exp => erlang:system_time(second) + 3600}).
 
+%% The issuer's `pubsub/subscribe' on the whole restricted group, the
+%% prefix and everything below it, as the realm mints it for a role.
+subscribe_grant(Issuer, Member) ->
+    macula_ucan:create(Issuer, Member,
+                       [#{with => <<"mri:topic:", ?RESTRICTED/binary>>, can => <<"pubsub/subscribe">>},
+                        #{with => <<"mri:topic:", ?RESTRICTED/binary, "/*">>, can => <<"pubsub/subscribe">>}],
+                       #{exp => erlang:system_time(second) + 3600}).
+
 %% The distributor's options over that key: what options/0 builds from
 %% deploy env, with a membership answer the test chooses.
 org_options(OrgKey) ->
@@ -428,7 +519,8 @@ stop_fake_pool(Pid) ->
 %% Env save/restore, so one suite never leaks into another
 %%------------------------------------------------------------------
 
--define(ENV, ["MCL_GROUP_ORG", "MCL_GROUP_ORG_KEY_ID", "MCL_GROUP_REALM_KEY_ID", "MCL_REALM", "MCL_GROUP_REMOVED_FILE"]).
+-define(ENV, ["MCL_GROUP_ORG", "MCL_GROUP_ORG_KEY_ID", "MCL_GROUP_REALM_KEY_ID", "MCL_REALM", "MCL_GROUP_REMOVED_FILE",
+              "MCL_GROUP_POLICY", "MCL_GROUP_RESTRICTED", "MCL_GROUP_RESTRICTED_ISSUER_KEY_ID"]).
 
 save_env() ->
     {ok, maps:from_list([{Name, os:getenv(Name)} || Name <- ?ENV])}.
