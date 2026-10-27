@@ -144,14 +144,22 @@ pull_forwards_to_the_registered_distributor_test() ->
 %% No distributor was ever asked to run: the realm still owes the org key,
 %% and the SDK cannot check a pull without it (macula 17). That is a normal
 %% setup state, so /health answers ok -- a fresh realm's first boot must
-%% never fail a canary -- and the wait is named by the boot notice and by
-%% the capability this service does not advertise (next test).
+%% never fail a canary -- and the wait is named by the boot notice, by the
+%% capability this service does not advertise (next test), and, since
+%% mcl_om 1.5.0 widens info(), in the body an operator actually reads
+%% (mcl-distributor#5).
 health_is_ok_while_the_org_key_id_is_unknown_test() ->
     {ok, Env} = save_env(),
     try
         true = os:unsetenv("MCL_GROUP_ORG_KEY_ID"),
         catch unregister(mcl_distributor),
-        ?assertEqual(ok, mcl_distributor_service:health())
+        ?assertEqual(ok, mcl_distributor_service:health()),
+        ?assertMatch(#{org_key_id := unset}, mcl_distributor_service:info()),
+        %% Encoded, because the canary reads the JSON: a value jsx cannot
+        %% write raises inside the handler and /health answers 500.
+        Body = mcl_om_health_handler:body(ok, mcl_distributor_service:info(), [], [], #{}, 0),
+        ?assertEqual(<<"unset">>,
+                     maps:get(<<"org_key_id">>, jsx:decode(jsx:encode(Body), [return_maps])))
     after
         restore_env(Env)
     end.
@@ -162,7 +170,8 @@ health_is_down_once_the_org_key_id_is_known_test() ->
     try
         true = os:putenv("MCL_GROUP_ORG_KEY_ID", ?ORG_KEY_ID_HEX),
         catch unregister(mcl_distributor),
-        ?assertEqual({down, distributor_not_running}, mcl_distributor_service:health())
+        ?assertEqual({down, distributor_not_running}, mcl_distributor_service:health()),
+        ?assertMatch(#{org_key_id := set}, mcl_distributor_service:info())
     after
         restore_env(Env)
     end.

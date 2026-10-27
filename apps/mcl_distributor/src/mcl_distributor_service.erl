@@ -14,12 +14,26 @@
 
 -export([info/0, start/1, stop/1, health/0, capabilities/0, identity_spec/0]).
 
-%% @doc The service's identity. The three keys are the whole of what
-%% mcl_om_service:info() types, so the org-key wait cannot ride here.
+%% @doc The service's identity, plus the one setup wait this service has.
+%% `org_key_id' reports whether the realm has minted the org key yet, in the
+%% `/health' body while the verdict stays `ok': a fresh realm mints it when
+%% it issues the provider grant, so `unset' is a normal first-boot state, not
+%% a fault, and an operator reads it here instead of in the container log
+%% (mcl_om 1.5.0 widens info() for exactly this; mcl-distributor#5).
 info() ->
     #{name => <<"mcl-distributor">>,
       version => <<"0.3.0">>,
-      description => <<"Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls">>}.
+      description => <<"Distributes a sealed pubsub group's rotating epoch keys to its admitted members over sealed calls">>,
+      org_key_id => org_key_state()}.
+
+%% The wait, named: `set' once the operator has filled
+%% MCL_GROUP_ORG_KEY_ID. The id itself stays out of /health.
+-spec org_key_state() -> set | unset.
+org_key_state() ->
+    case mcl_distributor:org_key_id() of
+        undefined -> unset;
+        _KeyId    -> set
+    end.
 
 %% @doc The distributor starts here, after mcl_om's pool: its default
 %% membership path reads the realm slot over that pool, so a missing org

@@ -42,7 +42,7 @@ The architecture (C4 context, containers, components) is in [architecture/README
 | Env | Meaning |
 |---|---|
 | `MCL_GROUP_ORG` | The org whose groups this service distributes; also the procedure's namespace (`<org>/group_keys_v1`) |
-| `MCL_GROUP_ORG_KEY_ID` | The org's PUBLIC key id (hex), which the handler admits a pull's chain against. The distributor cannot start without it: on a fresh realm the realm mints the org key only when it issues the provider grant, so a first boot runs without one. `/health` stays `ok` through that wait — a normal setup state must never fail a canary — while the boot logs one notice naming this variable and `group_keys_v1` is absent from everything advertised; fill it from the published `org_directory` and the first start that serves the group follows |
+| `MCL_GROUP_ORG_KEY_ID` | The org's PUBLIC key id (hex), which the handler admits a pull's chain against. The distributor cannot start without it: on a fresh realm the realm mints the org key only when it issues the provider grant, so a first boot runs without one. `/health` stays `ok` through that wait — a normal setup state must never fail a canary — and its body carries `"org_key_id": "unset"` (`"set"` once filled) so the wait is read from `/health` itself, while the boot logs one notice naming this variable and `group_keys_v1` is absent from everything advertised; fill it from the published `org_directory` and the first start that serves the group follows |
 | `MCL_GROUP_REALM_KEY_ID` | The realm key id (hex) the membership check pins the realm slot to |
 | `MCL_GROUP_POLICY` | `required` (default), `preferred`, or `off` |
 | `MCL_GROUP_ROTATE_MS` | Epoch rotation interval, default 900000 |
