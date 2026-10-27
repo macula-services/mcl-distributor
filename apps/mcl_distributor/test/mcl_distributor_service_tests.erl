@@ -153,13 +153,14 @@ health_is_down_without_a_distributor_test() ->
 
 %% No distributor was ever asked to run: the realm still owes the org key,
 %% and the SDK cannot check a pull without it (macula 17). Health names the
-%% wait rather than a process that failed.
+%% wait, as degraded rather than down: /health answers 503 either way, and
+%% degraded says a restart is not the answer while down would invite one.
 health_names_the_org_key_id_it_waits_for_test() ->
     {ok, Env} = save_env(),
     try
         true = os:unsetenv("MCL_GROUP_ORG_KEY_ID"),
         catch unregister(mcl_distributor),
-        ?assertEqual({down, org_key_id_unknown}, mcl_distributor_service:health())
+        ?assertEqual({degraded, #{org_key_id => unknown}}, mcl_distributor_service:health())
     after
         restore_env(Env)
     end.

@@ -30,21 +30,21 @@ stop(_State) -> ok.
 
 %% @doc The service's own health: the distributor process answers. The
 %% mesh, the claim and the advertise liveness are mcl_om's own checks,
-%% combined into /health by mcl_om_health. A distributor that was never
-%% started is named as the wait it is: the org key id is not known yet,
-%% so there is nothing to check a pull against and the realm still owes
-%% the org key.
+%% combined into /health by mcl_om_health.
+%%
+%% A distributor that was never started is the realm still owing the org
+%% key, not a process that failed: it answers `degraded' and names the
+%% wait, so /health is 503 and the fleet sees a node that serves no group
+%% keys, while a restart is visibly not the answer. With the org key id
+%% known, a missing distributor is a genuine `down'.
 health() ->
     case whereis(mcl_distributor) of
-        undefined -> {down, not_running()};
+        undefined -> not_running(mcl_distributor:org_key_id());
         _Pid      -> ok
     end.
 
-not_running() ->
-    case mcl_distributor:org_key_id() of
-        undefined -> org_key_id_unknown;
-        _OrgKeyId -> distributor_not_running
-    end.
+not_running(undefined) -> {degraded, #{org_key_id => unknown}};
+not_running(_OrgKeyId) -> {down, distributor_not_running}.
 
 %% WHAT THIS SERVICE ANNOUNCES IT CAN DO. One capability: the org's
 %% `group_keys_v1'. On the wire it is `Org/group_keys_v1', the org being
