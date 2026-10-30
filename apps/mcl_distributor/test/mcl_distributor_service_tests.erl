@@ -171,7 +171,11 @@ health_is_ok_while_the_org_key_id_is_unknown_test() ->
         ?assertMatch(#{org_key_id := unset}, mcl_distributor_service:info()),
         %% Encoded, because the canary reads the JSON: a value jsx cannot
         %% write raises inside the handler and /health answers 500.
-        Body = mcl_om_health_handler:body(ok, mcl_distributor_service:info(), [], [], #{}, 0),
+        %% body/7 since mcl_om 1.6.0 (mcl-om#41), which added the subscription
+        %% report between the advertise liveness and the claim: a subscriber that
+        %% will not start now degrades the verdict, so the body carries it. This
+        %% service subscribes to nothing, so the report it would send is empty.
+        Body = mcl_om_health_handler:body(ok, mcl_distributor_service:info(), [], [], #{}, #{}, 0),
         ?assertEqual(<<"unset">>,
                      maps:get(<<"org_key_id">>, jsx:decode(jsx:encode(Body), [return_maps])))
     after
